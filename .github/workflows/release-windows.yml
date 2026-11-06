@@ -64,9 +64,17 @@ jobs:
         shell: pwsh
         run: npm ci --prefix apps/desktop
 
-      - name: Keep the optional harness folder present
+      - name: Stage the agent component (DeepSeek Harness, MIT, from npm)
         shell: pwsh
-        run: New-Item -ItemType Directory -Force -Path apps/desktop/src-tauri/resources/harness | Out-Null
+        run: |
+          $dest = "apps/desktop/src-tauri/resources/harness"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Push-Location $dest
+          '{ "name": "quchen-harness", "private": true }' | Set-Content package.json -Encoding utf8
+          npm install "@deepseek-ai/dsh@0.2.2-rc.1" --omit=dev --no-audit --no-fund
+          Move-Item "node_modules/@deepseek-ai/dsh/*" . -Force
+          node lib/bin.js --version
+          Pop-Location
 
       - name: Build and publish
         uses: tauri-apps/tauri-action@v0
