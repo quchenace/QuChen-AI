@@ -1,0 +1,89 @@
+name: Windows installer
+
+# Builds the Windows installer (NSIS, per-user) and publishes it with the Tauri updater manifest (latest.json),
+# so an installed QuChen finds the next version and installs it. Run from the Actions tab, or push a v* tag.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, e.g. 0.2.11 (default: the version in the sources)"
+        required: false
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = "${{ inputs.version }}"
+          if (-not $v) {
+            $cargo = Get-Content apps/desktop/src-tauri/Cargo.toml -Raw
+            $v = ([regex]::Match($cargo, '(?m)^version\s*=\s*"([^"]+)"')).Groups[1].Value
+          }
+          if (-not $v) { throw "no version" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "tag=v$v" >> $env:GITHUB_OUTPUT
+
+      - name: Web UI
+        shell: pwsh
+        run: |
+          npm ci --prefix apps/host
+          npm run build --prefix apps/host
+
+      - name: Node sidecar for the bundled host
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File apps/desktop/scripts/fetch-node.ps1
+
+      - name: Control bundle (Python runtime, wheels, quchen_cli/quchen_control/serve)
+        shell: pwsh
+        run: python apps/desktop/scripts/stage-control.py
+
+      - name: Desktop dependencies
+        shell: pwsh
+        run: npm ci --prefix apps/desktop
+
+      - name: Keep the optional harness folder present
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path apps/desktop/src-tauri/resources/harness | Out-Null
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ steps.ver.outputs.tag }}
+          releaseName: "QuChen ${{ steps.ver.outputs.version }}"
+          releaseBody: |
+            Windows installer for QuChen ${{ steps.ver.outputs.version }}.
+            Installed copies find this release through latest.json and update in place.
+          releaseDraft: false
+          prerelease: false
+          args: >-
+            --config src-tauri/tauri.release.conf.json
+            --config src-tauri/tauri.update.conf.json
+            --bundles nsis
