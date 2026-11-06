@@ -1,0 +1,97 @@
+name: Engine packages (Windows)
+
+# Builds a CUDA engine package for the update feed: the per-card "quchen.exe" + its CUDA libraries,
+# packaged by packaging/package_engine.py. Compiling CUDA needs the toolkit, not a GPU, so a hosted runner can do it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      variants:
+        description: "Comma separated: cuda13, cuda12"
+        default: "cuda13"
+
+permissions:
+  contents: write
+
+jobs:
+  engine:
+    name: ${{ matrix.variant }}
+    if: contains(inputs.variants, matrix.variant)
+    runs-on: windows-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: cuda13
+            cuda: 13.0.2
+            archs: "75;86;89;120"
+            sm60: "OFF"
+            mindriver: "580.65"
+          - variant: cuda12
+            cuda: 12.9.0
+            archs: "60;61;70;75;80;86;89"
+            sm60: "ON"
+            mindriver: "575.51"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - uses: Jimver/cuda-toolkit@v0.2.19
+        with:
+          cuda: ${{ matrix.cuda }}
+          method: network
+          use-github-cache: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build tools and the pinned llama.cpp
+        shell: pwsh
+        run: |
+          python -m pip install --quiet --disable-pip-version-check -r requirements-build.txt
+          python -c "import setup; print(setup.get_llama_cpp())"
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $archs = "${{ matrix.archs }}" -split ";"
+          $last = $archs[-1]
+          $real = ($archs | ForEach-Object { "$_-real" }) -join ";"
+          $cudaArch = "$real;$last-virtual"
+          Write-Host "CUDA architectures: $cudaArch"
+          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release `
+            -DQUCHEN_ENABLE_CUDA=ON -DQUCHEN_BUILD_TESTS=OFF `
+            -DQUCHEN_EXPERIMENTAL_SM60=${{ matrix.sm60 }} -DQUCHEN_NATIVE_EXPERTS=ON -DQUCHEN_PORTABLE=ON `
+            -DQUCHEN_Q6K_EXPERTS=ON -DQUCHEN_MMQ_KQUANTS=ON `
+            "-DCMAKE_CUDA_ARCHITECTURES=$cudaArch" -DQUCHEN_GGML_DIR=third_party/llama.cpp
+
+      - name: Build the engine
+        shell: pwsh
+        run: cmake --build build --target quchen -j 4
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ver = (Select-String -Path CMakeLists.txt -Pattern "project\(quchen VERSION ([0-9.]+)\)").Matches[0].Groups[1].Value
+          if (-not $ver) { throw "no version in CMakeLists.txt" }
+          $stage = "stage-${{ matrix.variant }}"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item build/quchen.exe $stage/
+          $archs = "${{ matrix.archs }}"
+          $obj = @{ version = $ver; source = "build-engine.yml"; archs = $archs; cuda = "${{ matrix.cuda }}"; portable = $true }
+          $obj | ConvertTo-Json | Set-Content "$stage/BUILD.json" -Encoding utf8
+          $archArgs = @()
+          foreach ($a in ($archs -split ";")) { $archArgs += @("--arch", "sm_$a") }
+          python packaging/package_engine.py --src $stage --backend cuda --version $ver --out out-engine `
+            @archArgs --arch "compute_$($archs.Split(";")[-1])" --min-driver nvidia=${{ matrix.mindriver }} `
+            --variant ${{ matrix.variant }} --platform windows-x86_64 --build-id "gha-$ver-${{ matrix.variant }}"
+          Get-ChildItem out-engine -Recurse -Depth 1 | Select-Object FullName
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-${{ matrix.variant }}
+          path: out-engine/**
+          if-no-files-found: error
