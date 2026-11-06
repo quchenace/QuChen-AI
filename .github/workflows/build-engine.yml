@@ -30,7 +30,7 @@ jobs:
         shell: pwsh
         run: |
           switch ("${{ matrix.variant }}") {
-            "cuda13" { $cuda = "13.0.2"; $archs = "75;86;89;120"; $sm60 = "OFF"; $mind = "580.65" }
+            "cuda13" { $cuda = "13.3.0"; $archs = "75;86;89;120"; $sm60 = "OFF"; $mind = "580.65" }
             "cuda12" { $cuda = "12.9.0"; $archs = "60;61;70;75;80;86;89"; $sm60 = "ON"; $mind = "575.51" }
             default  { throw "unknown variant ${{ matrix.variant }}" }
           }
@@ -43,7 +43,6 @@ jobs:
         shell: pwsh
         run: |
           & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationVersion
-          cl 2>&1 | Select-Object -First 1
           nvcc --version | Select-Object -Last 2
 
       - uses: ilammy/msvc-dev-cmd@v1
