@@ -5,7 +5,12 @@
       "alg": "ed25519",
       "key_id": "5d1bc23abbeffd0d",
       "public": "KjnXZB0T1r3dmBNot8h+c4rTicRtllg1LH9fUlTw4ZY="
+    },
+    {
+      "alg": "ed25519",
+      "key_id": "b7508c375284bd4e",
+      "public": "c33yVklIQr6SPItASUoBV0hXWHTQp3U9k0ckoAfrj6Q="
     }
   ],
-  "app_minisign_public": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI2QjA5OTk5MDU1MjFGNUUKUldSZUgxSUZtWm13dHNGRU40N2xOUjdZZGpvcGl0NTB2WGxnS3VTc2RlakpSbnBxUkxndHNFY0oK"
+  "app_minisign_public": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY1ODkzMUFBNjJDQTM2NzAKUldSd05zcGlxakdKOVFzMDRVUXo2RVNjdExrM1k1RHJxaXVIc2J2bzBCcEVDSlBseGR2OUI0RXAK"
 }
