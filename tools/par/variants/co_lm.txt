@@ -1,0 +1,2 @@
+co_lref | 0,1 | 8 |   | QUCHEN_PREFILL_LM_FORCE=1 | | w2:4@--nonce idl --keep-text --max-tokens 48 --rounds 2;w2:8@--nonce idl --keep-text --max-tokens 48 --rounds 2
+co_lon  | 0,1 | 8 |   | QUCHEN_PREFILL_LM_FORCE=1;QUCHEN_COALESCE_PREFILL=8;QUCHEN_COALESCE_WAIT_MS=40;QUCHEN_CRASH_BT=/data/external/niko/par29/res/co/crash.txt | | w2:4@--nonce idl --keep-text --max-tokens 48 --rounds 2;w2:8@--nonce idl --keep-text --max-tokens 48 --rounds 2

@@ -1,0 +1,21 @@
+# Kubernetes (Prometheus Operator): QuChen behind a Service whose port is named "http".
+# The API key lives in a Secret (key "key"), sent as a bearer token.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: quchen
+  labels:
+    release: kube-prometheus-stack   # whatever your Prometheus selects ServiceMonitors by
+spec:
+  selector:
+    matchLabels:
+      app: quchen
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      authorization:
+        type: Bearer
+        credentials:
+          name: quchen-api-key
+          key: key

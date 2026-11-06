@@ -1,0 +1,43 @@
+﻿{
+    "exe":  "E:\\quchen-0134\\engine\\quchen.exe",
+    "args":  [
+                 "--pack",
+                 "E:\\quchen-data\\packs\\swift-iq3_xxs",
+                 "--native",
+                 "E:\\quchen-data\\models-swift\\IQ3_XXS\\Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+                 "--ple-gguf",
+                 "E:\\quchen-data\\models-swift\\IQ3_XXS\\Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+                 "--expert-profile",
+                 "E:\\quchen-src\\data\\expert-profile.bin",
+                 "--expert-cache",
+                 "auto",
+                 "--prefill",
+                 "auto:32768",
+                 "--spec",
+                 "4",
+                 "--mtp",
+                 "E:\\quchen-data\\mtp\\rt",
+                 "--max-context",
+                 "32768",
+                 "--kv",
+                 "int8",
+                 "--pcie-frac",
+                 "0.20",
+                 "--spec-min-p",
+                 "0.70"
+             ],
+    "cwd":  "E:\\quchen-0134",
+    "tokenizer":  "E:\\quchen-data\\packs\\swift-iq3_xxs\\tokenizer",
+    "model_name":  "swift-1.5-iq3_xxs",
+    "log":  "E:\\quchen-0136\\bench\\engine-swift-0134.log",
+    "lib_dirs":  [
+                     "E:\\quchen-src\\.venv\\Lib\\site-packages\\nvidia\\cu13\\bin\\x86_64"
+                 ],
+    "port":  18199,
+    "gpu":  0,
+    "gpus_asked":  true,
+    "host":  "127.0.0.1",
+    "env":  {
+                "QUCHEN_IQ_MT_MIN":  "1"
+            }
+}

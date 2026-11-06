@@ -1,0 +1,37 @@
+﻿{
+    "exe":  "E:\\quchen-0133\\engine\\quchen.exe",
+    "args":  [
+                 "--pack",
+                 "E:\\quchen-data\\packs\\ud-q4_k_xl",
+                 "--native",
+                 "E:\\quchen-data\\models-unsloth\\UD-Q4_K_XL\\Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+                 "--resident-budget-gib",
+                 "40",
+                 "--expert-profile",
+                 "E:\\quchen-src\\data\\expert-profile.bin",
+                 "--expert-cache",
+                 "auto",
+                 "--prefill",
+                 "auto",
+                 "--spec",
+                 "4",
+                 "--spec-min-p",
+                 "0.5",
+                 "--mtp",
+                 "E:\\quchen-data\\mtp\\rt",
+                 "--max-context",
+                 "32768",
+                 "--kv",
+                 "int8"
+             ],
+    "cwd":  "E:\\quchen-0133",
+    "tokenizer":  "E:\\quchen-data\\packs\\ud-q4_k_xl\\tokenizer",
+    "model_name":  "qwen3.8-flash-next-ud-q4_k_xl",
+    "log":  "E:\\quchen-0133\\bench\\engine-ud-b40.log",
+    "lib_dirs":  [
+                     "E:\\quchen-src\\.venv\\Lib\\site-packages\\nvidia\\cu13\\bin\\x86_64"
+                 ],
+    "port":  18199,
+    "gpu":  0,
+    "host":  "127.0.0.1"
+}

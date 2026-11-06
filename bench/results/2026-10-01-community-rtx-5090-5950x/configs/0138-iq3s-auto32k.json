@@ -1,0 +1,43 @@
+﻿{
+    "exe":  "E:\\quchen-0138\\engine\\quchen.exe",
+    "args":  [
+                 "--pack",
+                 "E:\\quchen-data\\packs\\iq3_s",
+                 "--native",
+                 "E:\\quchen-data\\models\\IQ3_S\\Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf",
+                 "--ple-gguf",
+                 "E:\\quchen-data\\models\\IQ3_S\\Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf",
+                 "--expert-profile",
+                 "E:\\quchen-src\\data\\expert-profile.bin",
+                 "--expert-cache",
+                 "auto",
+                 "--prefill",
+                 "auto:32768",
+                 "--spec",
+                 "4",
+                 "--spec-min-p",
+                 "0.70",
+                 "--mtp",
+                 "E:\\quchen-data\\mtp\\rt",
+                 "--max-context",
+                 "65536",
+                 "--kv",
+                 "int8",
+                 "--pcie-frac",
+                 "0.55"
+             ],
+    "cwd":  "E:\\quchen-0138",
+    "tokenizer":  "E:\\quchen-data\\packs\\iq3_s\\tokenizer",
+    "model_name":  "qwen3.8-flash-next-iq3_s",
+    "log":  "E:\\quchen-0138\\bench\\engine-iq3s-auto32k.log",
+    "lib_dirs":  [
+                     "E:\\quchen-src\\.venv\\Lib\\site-packages\\nvidia\\cu13\\bin\\x86_64"
+                 ],
+    "port":  18199,
+    "gpu":  0,
+    "gpus_asked":  true,
+    "host":  "127.0.0.1",
+    "env":  {
+                "QUCHEN_IQ_MT_MIN":  "1"
+            }
+}

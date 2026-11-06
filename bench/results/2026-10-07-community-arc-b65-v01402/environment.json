@@ -1,0 +1,24 @@
+{
+  "variables": {
+    "ONEAPI_DEVICE_SELECTOR": "level_zero:0",
+    "SYCL_CACHE_PERSISTENT": "0",
+    "SYCL_PROGRAM_COMPILE_OPTIONS": "-cl-fp32-correctly-rounded-divide-sqrt",
+    "QUCHEN_MIRROR_MIB": "16384",
+    "QUCHEN_VERIFY_DEVICE_PLAN": "1",
+    "QUCHEN_VERIFY_NO_HOST": "1",
+    "QUCHEN_WARM_GRAPHS": "0",
+    "QUCHEN_STAGER_THREADS": "4",
+    "OMP_NUM_THREADS": "4",
+    "MKL_NUM_THREADS": "4"
+  },
+  "absent": [
+    "QUCHEN_DEBUG",
+    "QUCHEN_DBG_NAN",
+    "QUCHEN_VERIFY_EAGER",
+    "QUCHEN_QFUSE"
+  ],
+  "alias_check": "upstream default enabled",
+  "public_fixture_additional_variable": {
+    "QUCHEN_TRACE": "1"
+  }
+}

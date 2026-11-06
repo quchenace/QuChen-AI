@@ -1,0 +1,1 @@
+co_t4 | 0,1 | 8 |   | QUCHEN_COALESCE_PREFILL=8;QUCHEN_CRASH_BT=/data/external/niko/par29/res/co/crash.txt;QUCHEN_TRACE=1 | | w2:4@--nonce idt --keep-text --max-tokens 16 --rounds 1

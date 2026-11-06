@@ -1,0 +1,5 @@
+@echo off
+title QuChen coder-IQ1_M
+cd /d "C:\Dev\QuChen"
+"C:\Dev\QuChen\.venv\Scripts\python.exe" "C:\Dev\QuChen\serve\server.py" "--engine" "quchen" "--config" "C:\Dev\QuChen\quchen-coder-iq1_m.json" "--port" "8081" "--open"
+if errorlevel 1 pause

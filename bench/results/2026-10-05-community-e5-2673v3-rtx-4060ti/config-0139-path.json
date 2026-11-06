@@ -1,0 +1,43 @@
+{
+ "exe": "/data/quchen-build/build/quchen",
+ "args": [
+  "--pack",
+  "/data/quchen-data/packs/iq3_s",
+  "--native",
+  "/data/quchen-models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf",
+  "--ple-gguf",
+  "/data/quchen-models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf",
+  "--expert-profile",
+  "~/ninfer-dev/quchen/data/expert-profile.bin",
+  "--expert-cache",
+  "auto",
+  "--prefill",
+  "auto",
+  "--spec",
+  "4",
+  "--spec-min-p",
+  "0.5",
+  "--mtp",
+  "/data/quchen-data/mtp/rt",
+  "--max-context",
+  "65536",
+  "--kv",
+  "int8",
+  "--kv-resident",
+  "32768"
+ ],
+ "cwd": "~/ninfer-dev/quchen",
+ "tokenizer": "/data/quchen-data/packs/iq3_s/tokenizer",
+ "model_name": "qwen3.8-flash-next-iq3_s",
+ "lib_dirs": [
+  "~/ninfer-dev/cuda-12.8/bin",
+  "~/ninfer-dev/cuda-12.8/lib64"
+ ],
+ "port": 8095,
+ "cuda": 12,
+ "env": {
+  "QUCHEN_DECODE_TIMING": "1",
+  "QUCHEN_Q2_LEGACY": "1",
+  "QUCHEN_ADAPT_LAG": "1"
+ }
+}

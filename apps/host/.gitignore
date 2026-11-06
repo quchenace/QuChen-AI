@@ -1,0 +1,8 @@
+node_modules/
+.quchen/
+.quchen-ui-preview/
+.localhost-*/
+.shots/
+tmp/
+.env*
+.DS_Store

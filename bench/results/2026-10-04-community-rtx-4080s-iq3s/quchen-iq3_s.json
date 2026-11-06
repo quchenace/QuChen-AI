@@ -1,0 +1,59 @@
+﻿{
+    "exe":  "E:\\quchen\\engine\\quchen.exe",
+    "args":  [
+                 "--pack",
+                 "E:\\QuChen-data\\packs\\iq3_s",
+                 "--native",
+                 "E:\\quchen-models\\IQ3_S\\Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf",
+                 "--ple-gguf",
+                 "E:\\quchen-models\\IQ3_S\\Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf",
+                 "--expert-profile",
+                 "E:\\quchen\\data\\expert-profile.bin",
+                 "--expert-cache",
+                 "8900",
+                 "--prefill",
+                 "auto",
+                 "--spec",
+                 "4",
+                 "--mtp",
+                 "E:\\QuChen-data\\mtp\\rt",
+                 "--max-context",
+                 "524288",
+                 "--rope-scaling",
+                 "yarn",
+                 "--rope-scale",
+                 "2",
+                 "--yarn-orig-ctx",
+                 "262144",
+                 "--kv",
+                 "int8",
+                 "--kv-resident",
+                 "32768",
+                 "--vision",
+                 "--vram-reserve-mib",
+                 "700",
+                 "--spec-min-p",
+                 "0.5",
+                 "--pool-workers",
+                 "4",
+                 "--pcie-frac",
+                 "0.35"
+             ],
+    "cwd":  "E:\\quchen",
+    "tokenizer":  "E:\\QuChen-data\\packs\\iq3_s\\tokenizer",
+    "model_name":  "qwen3.8-flash-next-iq3_s",
+    "log":  "E:\\quchen\\quchen-iq3_s.log",
+    "lib_dirs":  [
+                     "E:\\quchen\\.venv\\Lib\\site-packages\\nvidia\\cu13\\bin\\x86_64"
+                 ],
+    "port":  8080,
+    "vision":  {
+                   "exe":  "E:\\quchen\\engine\\quchen-vision.exe",
+                   "mmproj":  "E:\\quchen-models\\IQ3_S\\mmproj-Qwen3.8-Flash-Next-BF16.gguf",
+                   "model":  "E:\\quchen-models\\IQ3_S\\Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf",
+                   "gpu":  true,
+                   "max_tokens":  1024
+               }
+}
+
+
