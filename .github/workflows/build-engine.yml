@@ -1,6 +1,6 @@
 name: Engine packages (Windows)
 
-# Builds a CUDA engine package for the update feed: the per-card "quchen.exe" + its CUDA libraries,
+# Builds a CUDA engine package for the update feed: the per-card quchen.exe and its CUDA libraries,
 # packaged by packaging/package_engine.py. Compiling CUDA needs the toolkit, not a GPU, so a hosted runner can do it.
 
 on:
@@ -16,31 +16,34 @@ permissions:
 jobs:
   engine:
     name: ${{ matrix.variant }}
-    if: contains(inputs.variants, matrix.variant)
     runs-on: windows-latest
     timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - variant: cuda13
-            cuda: 13.0.2
-            archs: "75;86;89;120"
-            sm60: "OFF"
-            mindriver: "580.65"
-          - variant: cuda12
-            cuda: 12.9.0
-            archs: "60;61;70;75;80;86;89"
-            sm60: "ON"
-            mindriver: "575.51"
+        variant: ${{ fromJSON(format('["{0}"]', replace(inputs.variants, ',', '","')) }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Variant settings
+        id: p
+        shell: pwsh
+        run: |
+          switch ("${{ matrix.variant }}") {
+            "cuda13" { $cuda = "13.0.2"; $archs = "75;86;89;120"; $sm60 = "OFF"; $mind = "580.65" }
+            "cuda12" { $cuda = "12.9.0"; $archs = "60;61;70;75;80;86;89"; $sm60 = "ON"; $mind = "575.51" }
+            default  { throw "unknown variant ${{ matrix.variant }}" }
+          }
+          "cuda=$cuda" >> $env:GITHUB_OUTPUT
+          "archs=$archs" >> $env:GITHUB_OUTPUT
+          "sm60=$sm60" >> $env:GITHUB_OUTPUT
+          "mindriver=$mind" >> $env:GITHUB_OUTPUT
 
       - uses: ilammy/msvc-dev-cmd@v1
 
       - uses: Jimver/cuda-toolkit@v0.2.19
         with:
-          cuda: ${{ matrix.cuda }}
+          cuda: ${{ steps.p.outputs.cuda }}
           method: network
           use-github-cache: false
 
@@ -57,16 +60,11 @@ jobs:
       - name: Configure
         shell: pwsh
         run: |
-          $archs = "${{ matrix.archs }}" -split ";"
-          $last = $archs[-1]
+          $archs = "${{ steps.p.outputs.archs }}" -split ";"
           $real = ($archs | ForEach-Object { "$_-real" }) -join ";"
-          $cudaArch = "$real;$last-virtual"
+          $cudaArch = "$real;$($archs[-1])-virtual"
           Write-Host "CUDA architectures: $cudaArch"
-          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release `
-            -DQUCHEN_ENABLE_CUDA=ON -DQUCHEN_BUILD_TESTS=OFF `
-            -DQUCHEN_EXPERIMENTAL_SM60=${{ matrix.sm60 }} -DQUCHEN_NATIVE_EXPERTS=ON -DQUCHEN_PORTABLE=ON `
-            -DQUCHEN_Q6K_EXPERTS=ON -DQUCHEN_MMQ_KQUANTS=ON `
-            "-DCMAKE_CUDA_ARCHITECTURES=$cudaArch" -DQUCHEN_GGML_DIR=third_party/llama.cpp
+          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DQUCHEN_ENABLE_CUDA=ON -DQUCHEN_BUILD_TESTS=OFF -DQUCHEN_EXPERIMENTAL_SM60=${{ steps.p.outputs.sm60 }} -DQUCHEN_NATIVE_EXPERTS=ON -DQUCHEN_PORTABLE=ON -DQUCHEN_Q6K_EXPERTS=ON -DQUCHEN_MMQ_KQUANTS=ON "-DCMAKE_CUDA_ARCHITECTURES=$cudaArch" -DQUCHEN_GGML_DIR=third_party/llama.cpp
 
       - name: Build the engine
         shell: pwsh
@@ -80,15 +78,13 @@ jobs:
           $stage = "stage-${{ matrix.variant }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item build/quchen.exe $stage/
-          $archs = "${{ matrix.archs }}"
-          $obj = @{ version = $ver; source = "build-engine.yml"; archs = $archs; cuda = "${{ matrix.cuda }}"; portable = $true }
-          $obj | ConvertTo-Json | Set-Content "$stage/BUILD.json" -Encoding utf8
+          $archs = "${{ steps.p.outputs.archs }}"
+          @{ version = $ver; source = "build-engine.yml"; archs = $archs; cuda = "${{ steps.p.outputs.cuda }}"; portable = $true } | ConvertTo-Json | Set-Content "$stage/BUILD.json" -Encoding utf8
           $archArgs = @()
           foreach ($a in ($archs -split ";")) { $archArgs += @("--arch", "sm_$a") }
-          python packaging/package_engine.py --src $stage --backend cuda --version $ver --out out-engine `
-            @archArgs --arch "compute_$($archs.Split(";")[-1])" --min-driver nvidia=${{ matrix.mindriver }} `
-            --variant ${{ matrix.variant }} --platform windows-x86_64 --build-id "gha-$ver-${{ matrix.variant }}"
-          Get-ChildItem out-engine -Recurse -Depth 1 | Select-Object FullName
+          $last = ($archs -split ";")[-1]
+          python packaging/package_engine.py --src $stage --backend cuda --version $ver --out out-engine @archArgs --arch "compute_$last" --min-driver nvidia=${{ steps.p.outputs.mindriver }} --variant ${{ matrix.variant }} --platform windows-x86_64 --build-id "gha-$ver-${{ matrix.variant }}"
+          Get-ChildItem out-engine -Recurse | Select-Object FullName,Length
 
       - uses: actions/upload-artifact@v4
         with:
