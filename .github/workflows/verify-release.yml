@@ -30,7 +30,7 @@ jobs:
           if [ -z "$TAG" ]; then TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName); fi
           echo "tag=$TAG" >> "$GITHUB_ENV"
           mkdir -p verify
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.exe" --pattern "*.sig" --pattern "latest.json" --dir verify
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.exe" --pattern "*.sig" --pattern "latest.json" --pattern "SHA256SUMS.txt" --dir verify
           ls -l verify
 
       - name: latest.json names the Windows installer and its signature
@@ -53,3 +53,14 @@ jobs:
           echo "verifying $EXE as version $V"
           python packaging/feed_tool.py set-app-platform --app-json verify/tauri-latest.json --target windows-x86_64 --version "$V" --archive "$EXE" --sig "$EXE.sig"
           cat verify/tauri-latest.json
+
+      - name: SHA256SUMS.txt matches the published installer
+        run: |
+          EXE=$(ls verify/*.exe | head -n 1)
+          NAME=$(basename "$EXE")
+          grep -- " $NAME" verify/SHA256SUMS.txt
+          ACTUAL=$(sha256sum "$EXE" | cut -d' ' -f1)
+          EXPECTED=$(grep -- " $NAME" verify/SHA256SUMS.txt | cut -d' ' -f1)
+          echo "actual:   $ACTUAL"
+          echo "expected: $EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
