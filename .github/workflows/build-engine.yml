@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
     inputs:
       variants:
-        description: "Comma separated: cuda13, cuda12"
-        default: "cuda13"
+        description: 'JSON list of variants, e.g. ["cuda13","cuda12"]'
+        default: '["cuda13"]'
 
 permissions:
   contents: write
