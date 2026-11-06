@@ -96,6 +96,15 @@ Not sure what fits? [Choose a model for your computer](docs/MODELS.md#pick-by-me
 
 **[Download QuChen for Windows, Linux or Mac →](https://github.com/quchenace/QuChen-AI/releases/latest)**
 
+**Or send your friend one line** (Windows, PowerShell — it downloads the newest installer, checks its
+SHA-256, installs for the current user and starts QuChen):
+
+```powershell
+irm https://github.com/quchenace/QuChen-AI/releases/latest/download/install-app.ps1 | iex
+```
+
+`install-app.cmd` does the same on a double-click, and `$env:QUCHEN_NO_START = '1'` installs without starting it.
+
 Install the app, choose a model, and start chatting. There is one installer for each system. On first start the app
 downloads the engine for your graphics card. [Help with the installer](docs/INSTALL.md#the-app).
 

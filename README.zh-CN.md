@@ -92,6 +92,14 @@ quchen launch --family deepseek41 --model ist-das-2.00bpw --plan
 
 **[下载适用于 Windows、Linux 或 Mac 的 QuChen →](https://github.com/quchenace/QuChen-AI/releases/latest)**
 
+**或者只发一行命令给朋友**（Windows PowerShell——自动找到最新安装包、校验 SHA-256、按当前用户安装并启动）：
+
+```powershell
+irm https://github.com/quchenace/QuChen-AI/releases/latest/download/install-app.ps1 | iex
+```
+
+双击 `install-app.cmd` 效果相同；设置 `$env:QUCHEN_NO_START = '1'` 则只安装不启动。
+
 安装应用，选择模型，就可以开始聊天。每个系统只有一个安装程序。首次启动时，应用会下载适合你显卡的引擎。[安装程序帮助](docs/INSTALL.md#the-app)。
 
 <sub>文件: `QuChen-0.2.9-windows-x64-setup.exe` · `QuChen-0.2.9-linux-x86_64.AppImage` · `QuChen-0.2.9-macos-arm64.dmg`</sub>
