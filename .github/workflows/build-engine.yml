@@ -93,3 +93,45 @@ jobs:
           name: engine-${{ matrix.variant }}
           path: out-engine/**
           if-no-files-found: error
+
+  feed:
+    name: publish the signed feed
+    needs: engine
+    if: needs.engine.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: engine-*
+          path: artifacts
+
+      - name: Sign and pack the engine package
+        env:
+          FEED_KEY: ${{ secrets.QUCHEN_FEED_KEY }}
+        run: |
+          mkdir -p key RELEASE/engine
+          printf '%s' "$FEED_KEY" > key/feed-key.json
+          ls -R artifacts | head -50
+          for d in artifacts/*/*/; do
+            echo "package: $d"
+            python packaging/feed_tool.py sign-package "$d" --key key/feed-key.json
+            python packaging/feed_tool.py pack-engine "$d" --out RELEASE/engine --url-prefix=
+          done
+
+      - name: Build the feed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          echo "release $TAG"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir .
+          python packaging/feed_tool.py build-feed --out RELEASE --sequence 1 --key key/feed-key.json --engine RELEASE/engine --app-json latest.json
+          ls -R RELEASE | head -40
+          gh release upload "$TAG" RELEASE/quchen-feed.json RELEASE/quchen-feed.json.sig --clobber
+          gh release upload "$TAG" RELEASE/engine/* --clobber
