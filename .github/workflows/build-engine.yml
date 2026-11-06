@@ -72,10 +72,16 @@ jobs:
         shell: pwsh
         run: cmake --build build --target quchen -j 4
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exe-${{ matrix.variant }}
+          path: build/quchen.exe
+          if-no-files-found: error
+
       - name: Package
         shell: pwsh
         run: |
-          $ver = (Select-String -Path CMakeLists.txt -Pattern "project\(quchen VERSION ([0-9.]+)\)").Matches[0].Groups[1].Value
+          $ver = (Select-String -Path CMakeLists.txt -Pattern "project\(quchen VERSION ([0-9.]+)").Matches[0].Groups[1].Value
           if (-not $ver) { throw "no version in CMakeLists.txt" }
           $stage = "stage-${{ matrix.variant }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
