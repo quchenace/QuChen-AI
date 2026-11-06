@@ -15,8 +15,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/quchenace/QuChen/releases/latest"><img src="https://img.shields.io/github/v/release/quchenace/QuChen?label=download&color=0ab887" alt="下载 QuChen"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/quchenace/QuChen" alt="MIT 许可证"></a>
+  <a href="https://github.com/quchenace/QuChen-AI/releases/latest"><img src="https://img.shields.io/github/v/release/quchenace/QuChen-AI?label=download&color=0ab887" alt="下载 QuChen"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/quchenace/QuChen-AI" alt="MIT 许可证"></a>
 </p>
 
 <p align="center"><sub><a href="README.md">English</a> · <b>简体中文</b> · <a href="README.ja.md">日本語</a> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <a href="README.es.md">Español</a> · <a href="README.pt-BR.md">Português</a> · <a href="README.pl.md">Polski</a></sub></p>
@@ -76,7 +76,7 @@ quchen launch --family deepseek41 --model ist-das-2.00bpw --plan
 | 1x Radeon AI PRO R9700, 251 GB 内存 | 21 到 25 tokens/s | 320 到 360 tokens/s (8K) |
 | 4x Radeon AI PRO R9700 | 74 到 77 tokens/s | 400 到 450 tokens/s (8K) |
 
-[内存、磁盘和详细信息](docs/DEEPSEEK41.md) · [发行说明](https://github.com/quchenace/QuChen/releases)
+[内存、磁盘和详细信息](docs/DEEPSEEK41.md) · [发行说明](https://github.com/quchenace/QuChen-AI/releases)
 
 </details>
 
@@ -90,7 +90,7 @@ quchen launch --family deepseek41 --model ist-das-2.00bpw --plan
 
 ### 桌面应用
 
-**[下载适用于 Windows、Linux 或 Mac 的 QuChen →](https://github.com/quchenace/QuChen/releases/latest)**
+**[下载适用于 Windows、Linux 或 Mac 的 QuChen →](https://github.com/quchenace/QuChen-AI/releases/latest)**
 
 安装应用，选择模型，就可以开始聊天。每个系统只有一个安装程序。首次启动时，应用会下载适合你显卡的引擎。[安装程序帮助](docs/INSTALL.md#the-app)。
 
@@ -113,13 +113,13 @@ quchen launch --family deepseek41 --model ist-das-2.00bpw --plan
 **Linux / Mac**
 
 ```sh
-curl -fsSL https://github.com/quchenace/QuChen/releases/latest/download/install.sh -o install.sh && sh install.sh
+curl -fsSL https://github.com/quchenace/QuChen-AI/releases/latest/download/install.sh -o install.sh && sh install.sh
 ```
 
 **Windows PowerShell**
 
 ```powershell
-irm https://github.com/quchenace/QuChen/releases/latest/download/install.ps1 | iex
+irm https://github.com/quchenace/QuChen-AI/releases/latest/download/install.ps1 | iex
 ```
 
 在 Windows 上，安装后请打开一个新的终端。然后运行：
@@ -169,7 +169,7 @@ quchen launch
 
 ## 帮助
 
-[全部指南](docs) · [故障排查](docs/TROUBLESHOOTING.md) · [报告问题](https://github.com/quchenace/QuChen/issues/new/choose) ·
+[全部指南](docs) · [故障排查](docs/TROUBLESHOOTING.md) · [报告问题](https://github.com/quchenace/QuChen-AI/issues/new/choose) ·
 [基准测试](docs/COMMUNITY_BENCHMARKS.md) · [工作原理](docs/HOW_IT_WORKS.md) · [参与贡献](CONTRIBUTING.md)
 
 [MIT 许可证](LICENSE) · [致谢和模型许可证](docs/HOW_IT_WORKS.md#credits) · [隐私](docs/SAFETY.md)

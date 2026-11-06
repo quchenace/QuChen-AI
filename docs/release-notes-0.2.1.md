@@ -15,7 +15,7 @@
 | | AMD Ryzen AI Max (Strix Halo) | `QuChen-0.2.1-linux-amd-strixhalo.AppImage` |
 | Mac | Apple silicon, macOS 15 or newer | `QuChen-0.2.1-mac.dmg` (signed and notarised by Apple) |
 
-The Terminal installs with one line and picks its engine by itself (`curl -fsSL https://github.com/quchenace/QuChen/releases/latest/download/install.sh | sh`, or `irm https://github.com/quchenace/QuChen/releases/latest/download/install.ps1 | iex` on Windows). The other files in this release are the engine and Terminal packages, the signed update feed and the in-app update files; you do not need to download them. Docker images are separate (below).
+The Terminal installs with one line and picks its engine by itself (`curl -fsSL https://github.com/quchenace/QuChen-AI/releases/latest/download/install.sh | sh`, or `irm https://github.com/quchenace/QuChen-AI/releases/latest/download/install.ps1 | iex` on Windows). The other files in this release are the engine and Terminal packages, the signed update feed and the in-app update files; you do not need to download them. Docker images are separate (below).
 
 ## What is new
 

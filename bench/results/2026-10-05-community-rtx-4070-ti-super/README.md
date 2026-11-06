@@ -35,7 +35,7 @@ two metrics mean different things, see Methodology.
 - **Stack**: NVIDIA driver 595.91.07 (CUDA 13.2); nvidia-container-toolkit 1.20.1
   with the `nvidia` runtime as Docker's default; Docker 29.8.1.
 - **QuChen commit**: `6f32ec070f23ced9f50e704d854d775da52591ab`
-  ([quchenace/QuChen](https://github.com/quchenace/QuChen) main, 2026-10-05).
+  ([quchenace/QuChen-AI](https://github.com/quchenace/QuChen-AI) main, 2026-10-05).
 - **Engine build**: locally compiled CUDA architecture **89** (RTX 40 only,
   fat-binary with a single cubin), `BUILD_VISION=0` so the image-encoder
   did **not** compile. Base image: `nvidia/cuda:13.0.0-devel-ubuntu24.04`.

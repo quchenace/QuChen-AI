@@ -82,7 +82,7 @@ For everyday use follow [the app or Terminal installation](INSTALL.md). The comm
 builds the Metal engine locally.
 
 ```sh
-git clone https://github.com/quchenace/QuChen && cd QuChen
+git clone https://github.com/quchenace/QuChen-AI && cd QuChen
 ./setup.sh                 # asks the size; --yes takes the recommended answers
 ```
 

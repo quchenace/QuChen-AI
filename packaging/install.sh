@@ -1,7 +1,7 @@
 #!/bin/sh
 # QuChen Terminal: one-line installer for Linux (x86_64, and ARM64 on the NVIDIA DGX Spark) and macOS (Apple silicon).
 #
-#     curl -fsSL https://github.com/quchenace/QuChen/releases/latest/download/install.sh -o install.sh && sh install.sh
+#     curl -fsSL https://github.com/quchenace/QuChen-AI/releases/latest/download/install.sh -o install.sh && sh install.sh
 #
 # What it does, in order (and nothing else):
 #   1. finds out which computer this is (system, processor, graphics card) so it can fetch the right archive;
@@ -14,14 +14,14 @@
 # The engine (the part that talks to your graphics card) and the model are NOT part of this: `quchen launch` fetches the engine for
 # your card the first time you choose a model, from the same release folder, signed.
 #
-# <feed> is where the release folder is hosted: GitHub Releases of quchenace/QuChen (the "latest" release's files), built in as the default.
+# <feed> is where the release folder is hosted: GitHub Releases of quchenace/QuChen-AI (the "latest" release's files), built in as the default.
 # Set QUCHEN_FEED to another folder (a URL) to use that instead, for example a local test feed:  QUCHEN_FEED=http://127.0.0.1:8099 sh install.sh
 #
 # Settings (all optional): QUCHEN_FEED, QUCHEN_DATA_DIR (default ~/.local/share/quchen), QUCHEN_BIN_DIR (default ~/.local/bin),
 # QUCHEN_INSTALL_TEST_TRUST=1 (a test feed: also fetch <feed>/test-trust.json and trust only that key for the check in step 4).
 set -eu
 
-FEED="${QUCHEN_FEED:-https://github.com/quchenace/QuChen/releases/latest/download}"
+FEED="${QUCHEN_FEED:-https://github.com/quchenace/QuChen-AI/releases/latest/download}"
 FEED="${FEED%/}"
 DATA_DIR="${QUCHEN_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/quchen}"
 BIN_DIR="${QUCHEN_BIN_DIR:-$HOME/.local/bin}"

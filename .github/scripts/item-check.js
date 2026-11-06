@@ -175,7 +175,7 @@ function checklist(missing) {
   return missing.map((m) => '- [ ] ' + m).join('\n');
 }
 
-const CONTRIB = 'https://github.com/quchenace/QuChen/blob/main/CONTRIBUTING.md';
+const CONTRIB = 'https://github.com/quchenace/QuChen-AI/blob/main/CONTRIBUTING.md';
 
 function intakeComment(isPull, missing) {
   return [

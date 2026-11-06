@@ -1052,7 +1052,7 @@ def arch_notice(built: tuple[str, ...], here: list[str]) -> str:
             f"Ask for the {make(have)} build.")
 
 
-RELEASES_URL = "https://github.com/quchenace/QuChen/releases"
+RELEASES_URL = "https://github.com/quchenace/QuChen-AI/releases"
 MAKE_NAMES = {"cuda": "NVIDIA", "hip": "AMD", "sycl": "Intel"}
 
 

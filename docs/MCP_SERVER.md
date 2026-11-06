@@ -25,7 +25,7 @@ direction: *your assistant* manages QuChen.
 This is an optional **source-checkout tool**. It is not required to install the released app or Terminal.
 For normal agent-assisted installation, use [AI_SETUP.md](AI_SETUP.md).
 
-You need a copy of QuChen: the zip from GitHub, or `git clone https://github.com/quchenace/QuChen`. Below,
+You need a copy of QuChen: the zip from GitHub, or `git clone https://github.com/quchenace/QuChen-AI`. Below,
 `C:\Users\you\QuChen` (Windows) and `/home/you/QuChen` (Linux) stand for that folder. Use `python3` on Linux. On
 Windows, use `py` if `python` is not on your PATH.
 

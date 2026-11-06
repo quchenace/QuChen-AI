@@ -88,7 +88,7 @@ class FastMirror(unittest.TestCase):
         self.assertEqual(setup.file_pin(moved), setup.file_pin(url))
 
     def test_a_url_that_is_not_huggingface_is_left_alone(self):
-        url = "https://github.com/quchenace/QuChen/releases/latest/download/quchen-windows-x64.zip"
+        url = "https://github.com/quchenace/QuChen-AI/releases/latest/download/quchen-windows-x64.zip"
         self.assertEqual(setup.mirrored_url(url), url)
         self.assertFalse(setup._fast_mirror)
 

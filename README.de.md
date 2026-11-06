@@ -15,8 +15,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/quchenace/QuChen/releases/latest"><img src="https://img.shields.io/github/v/release/quchenace/QuChen?label=download&color=0ab887" alt="QuChen herunterladen"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/quchenace/QuChen" alt="MIT-Lizenz"></a>
+  <a href="https://github.com/quchenace/QuChen-AI/releases/latest"><img src="https://img.shields.io/github/v/release/quchenace/QuChen-AI?label=download&color=0ab887" alt="QuChen herunterladen"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/quchenace/QuChen-AI" alt="MIT-Lizenz"></a>
 </p>
 
 <p align="center"><sub><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <b>Deutsch</b> · <a href="README.fr.md">Français</a> · <a href="README.es.md">Español</a> · <a href="README.pt-BR.md">Português</a> · <a href="README.pl.md">Polski</a></sub></p>
@@ -76,7 +76,7 @@ Gemessen mit dem 2.00-bpw-Set auf QuChen 0.2.5. „Ausgabe“ ist das Tempo der 
 | 1x Radeon AI PRO R9700, 251 GB RAM | 21 bis 25 Token/s | 320 bis 360 Token/s (8K) |
 | 4x Radeon AI PRO R9700 | 74 bis 77 Token/s | 400 bis 450 Token/s (8K) |
 
-[Speicher, Festplatte und Details](docs/DEEPSEEK41.md) · [Versionshinweise](https://github.com/quchenace/QuChen/releases)
+[Speicher, Festplatte und Details](docs/DEEPSEEK41.md) · [Versionshinweise](https://github.com/quchenace/QuChen-AI/releases)
 
 </details>
 
@@ -90,7 +90,7 @@ Unsicher, was passt? [Wähle ein Modell für deinen Computer](docs/MODELS.md#pic
 
 ### Desktop-App
 
-**[QuChen für Windows, Linux oder Mac herunterladen →](https://github.com/quchenace/QuChen/releases/latest)**
+**[QuChen für Windows, Linux oder Mac herunterladen →](https://github.com/quchenace/QuChen-AI/releases/latest)**
 
 Installiere die App, wähle ein Modell und leg mit dem Chat los. Es gibt einen Installer pro System. Beim ersten Start lädt die App die Engine für deine Grafikkarte herunter. [Hilfe zum Installer](docs/INSTALL.md#the-app).
 
@@ -113,13 +113,13 @@ Lieber im Terminal? Installiere QuChen und starte dann **`quchen launch`**.
 **Linux / Mac**
 
 ```sh
-curl -fsSL https://github.com/quchenace/QuChen/releases/latest/download/install.sh -o install.sh && sh install.sh
+curl -fsSL https://github.com/quchenace/QuChen-AI/releases/latest/download/install.sh -o install.sh && sh install.sh
 ```
 
 **Windows PowerShell**
 
 ```powershell
-irm https://github.com/quchenace/QuChen/releases/latest/download/install.ps1 | iex
+irm https://github.com/quchenace/QuChen-AI/releases/latest/download/install.ps1 | iex
 ```
 
 Öffne unter Windows danach ein neues Terminal. Dann:
@@ -169,7 +169,7 @@ Führe **`quchen connect`** aus, um die Einrichtung für dein Tool zu sehen. [Ve
 
 ## Hilfe
 
-[Alle Anleitungen](docs) · [Fehlerbehebung](docs/TROUBLESHOOTING.md) · [Fehler melden](https://github.com/quchenace/QuChen/issues/new/choose) ·
+[Alle Anleitungen](docs) · [Fehlerbehebung](docs/TROUBLESHOOTING.md) · [Fehler melden](https://github.com/quchenace/QuChen-AI/issues/new/choose) ·
 [Benchmarks](docs/COMMUNITY_BENCHMARKS.md) · [So funktioniert es](docs/HOW_IT_WORKS.md) · [Mitmachen](CONTRIBUTING.md)
 
 [MIT-Lizenz](LICENSE) · [Danksagung und Modelllizenzen](docs/HOW_IT_WORKS.md#credits) · [Datenschutz](docs/SAFETY.md)

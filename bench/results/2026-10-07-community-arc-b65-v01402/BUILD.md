@@ -57,7 +57,7 @@ original preparation versions. No custom draft vocabulary or ranking;
 ```sh
 export BENCH_ASSETS=/absolute/path/to/benchmark-assets
 export PREPARATION_ROOT=/absolute/path/to/quchen-preparation-checkout
-git clone https://github.com/quchenace/QuChen.git "$PREPARATION_ROOT"
+git clone https://github.com/quchenace/QuChen-AI.git "$PREPARATION_ROOT"
 git -C "$PREPARATION_ROOT" fetch origin 6f32ec070f23ced9f50e704d854d775da52591ab
 git -C "$PREPARATION_ROOT" checkout --detach FETCH_HEAD
 python "$PREPARATION_ROOT/tools/iq_pack.py" \

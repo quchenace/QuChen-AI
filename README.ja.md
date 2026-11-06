@@ -15,8 +15,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/quchenace/QuChen/releases/latest"><img src="https://img.shields.io/github/v/release/quchenace/QuChen?label=download&color=0ab887" alt="QuChen をダウンロード"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/quchenace/QuChen" alt="MIT ライセンス"></a>
+  <a href="https://github.com/quchenace/QuChen-AI/releases/latest"><img src="https://img.shields.io/github/v/release/quchenace/QuChen-AI?label=download&color=0ab887" alt="QuChen をダウンロード"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/quchenace/QuChen-AI" alt="MIT ライセンス"></a>
 </p>
 
 <p align="center"><sub><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <b>日本語</b> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <a href="README.es.md">Español</a> · <a href="README.pt-BR.md">Português</a> · <a href="README.pl.md">Polski</a></sub></p>
@@ -76,7 +76,7 @@ QuChen 0.2.5 で 2.00 bpw のセットを使って測定しました。「出力
 | 1x Radeon AI PRO R9700, 251 GB RAM | 21〜25 トークン/秒 | 320〜360 トークン/秒 (8K) |
 | 4x Radeon AI PRO R9700 | 74〜77 トークン/秒 | 400〜450 トークン/秒 (8K) |
 
-[メモリ、ディスク、詳細](docs/DEEPSEEK41.md) · [リリースノート](https://github.com/quchenace/QuChen/releases)
+[メモリ、ディスク、詳細](docs/DEEPSEEK41.md) · [リリースノート](https://github.com/quchenace/QuChen-AI/releases)
 
 </details>
 
@@ -90,7 +90,7 @@ QuChen 0.2.5 で 2.00 bpw のセットを使って測定しました。「出力
 
 ### デスクトップアプリ
 
-**[Windows、Linux、Mac 用の QuChen をダウンロード →](https://github.com/quchenace/QuChen/releases/latest)**
+**[Windows、Linux、Mac 用の QuChen をダウンロード →](https://github.com/quchenace/QuChen-AI/releases/latest)**
 
 アプリをインストールし、モデルを選んで、チャットを始めましょう。インストーラーはシステムごとに1つです。初回起動時に、アプリがお使いのグラフィックスカード用のエンジンをダウンロードします。[インストーラーのヘルプ](docs/INSTALL.md#the-app)。
 
@@ -113,13 +113,13 @@ QuChen 0.2.5 で 2.00 bpw のセットを使って測定しました。「出力
 **Linux / Mac**
 
 ```sh
-curl -fsSL https://github.com/quchenace/QuChen/releases/latest/download/install.sh -o install.sh && sh install.sh
+curl -fsSL https://github.com/quchenace/QuChen-AI/releases/latest/download/install.sh -o install.sh && sh install.sh
 ```
 
 **Windows PowerShell**
 
 ```powershell
-irm https://github.com/quchenace/QuChen/releases/latest/download/install.ps1 | iex
+irm https://github.com/quchenace/QuChen-AI/releases/latest/download/install.ps1 | iex
 ```
 
 Windows では、インストール後に新しいターミナルを開きます。そのあと:
@@ -169,7 +169,7 @@ quchen launch
 
 ## ヘルプ
 
-[すべてのガイド](docs) · [トラブルシューティング](docs/TROUBLESHOOTING.md) · [不具合を報告](https://github.com/quchenace/QuChen/issues/new/choose) ·
+[すべてのガイド](docs) · [トラブルシューティング](docs/TROUBLESHOOTING.md) · [不具合を報告](https://github.com/quchenace/QuChen-AI/issues/new/choose) ·
 [ベンチマーク](docs/COMMUNITY_BENCHMARKS.md) · [仕組み](docs/HOW_IT_WORKS.md) · [貢献する](CONTRIBUTING.md)
 
 [MIT ライセンス](LICENSE) · [クレジットとモデルのライセンス](docs/HOW_IT_WORKS.md#credits) · [プライバシー](docs/SAFETY.md)

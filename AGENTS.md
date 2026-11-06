@@ -14,7 +14,7 @@ existing executable defaults may differ, so inspect the plan and choose the fami
 QuChen has three parts:
 
 - **The app** (`apps/desktop`, the Tauri shell; `apps/host`, the Node host and the web UI). It is for people who do
-  not want a terminal. One installer per system ([latest release](https://github.com/quchenace/QuChen/releases/latest)):
+  not want a terminal. One installer per system ([latest release](https://github.com/quchenace/QuChen-AI/releases/latest)):
   `QuChen-0.2.9-windows-x64-setup.exe`, `QuChen-0.2.9-linux-x86_64.AppImage`, `QuChen-0.2.9-macos-arm64.dmg`.
   The Windows and Linux installers carry no engine: the app downloads the engine for the graphics card on first
   start, or installs a file the user already has. The Mac dmg keeps its small Metal engine inside.
@@ -34,8 +34,8 @@ short version is:
 1. Install the Terminal. It needs no administrator rights.
 
    ```sh
-   curl -fsSL https://github.com/quchenace/QuChen/releases/latest/download/install.sh -o install.sh && sh install.sh                  # Linux, Mac
-   irm https://github.com/quchenace/QuChen/releases/latest/download/install.ps1 | iex                         # Windows PowerShell
+   curl -fsSL https://github.com/quchenace/QuChen-AI/releases/latest/download/install.sh -o install.sh && sh install.sh                  # Linux, Mac
+   irm https://github.com/quchenace/QuChen-AI/releases/latest/download/install.ps1 | iex                         # Windows PowerShell
    ```
 
    On Windows, open a new terminal afterwards so that `quchen` is on the PATH.

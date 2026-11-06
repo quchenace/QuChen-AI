@@ -48,7 +48,7 @@ missing combination.
 **An update says it succeeded but `quchen --version` is still old.**
 The Terminal switches to the updated Control on the next command, so run `quchen --version` again. If it is still old,
 run the one-line installer once more; it keeps models and settings. The app, Control and engine have separate version
-numbers; see [updating](INSTALL.md#updating) and the [release notes](https://github.com/quchenace/QuChen/releases).
+numbers; see [updating](INSTALL.md#updating) and the [release notes](https://github.com/quchenace/QuChen-AI/releases).
 
 **A new engine misbehaves after an update.**
 Stop the model, then use the app's rollback control or `quchen components rollback`. An update keeps the engine it
@@ -368,6 +368,6 @@ overwrite local branches or edits just to make `git pull` succeed.
 
 Look through a log before you send it, and never send an API key. Include model and quantization, OS, GPU/VRAM, RAM,
 driver, install route (app, Terminal or the installer), QuChen and engine versions, exact command, expected result and
-actual error. Open an [issue](https://github.com/quchenace/QuChen/issues) and attach the log. Follow
+actual error. Open an [issue](https://github.com/quchenace/QuChen-AI/issues) and attach the log. Follow
 [CONTRIBUTING.md](../CONTRIBUTING.md). The full table of error messages, with the older engine fixes, is in the
 [details](DETAILS.md#troubleshooting).

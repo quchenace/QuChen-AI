@@ -1,6 +1,6 @@
 # Preliminary native RTX 3090 / EPYC 7453 results
 
-Issue: [#165](https://github.com/quchenace/QuChen/issues/165)
+Issue: [#165](https://github.com/quchenace/QuChen-AI/issues/165)
 Engine: QuChen v0.1.26, source build at `ac8b251`
 Status: preliminary; prompt set and harness guidance requested upstream.
 

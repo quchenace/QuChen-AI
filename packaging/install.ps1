@@ -1,6 +1,6 @@
 # QuChen Terminal: one-line installer for Windows (PowerShell 5.1 or newer).
 #
-#     irm https://github.com/quchenace/QuChen/releases/latest/download/install.ps1 | iex
+#     irm https://github.com/quchenace/QuChen-AI/releases/latest/download/install.ps1 | iex
 #
 # What it does, in order (and nothing else):
 #   1. finds out which computer this is (Windows, processor, graphics card);
@@ -13,7 +13,7 @@
 # The engine and the model are not part of this: `quchen launch` fetches the engine for your graphics card the first time you choose
 # a model, from the same release folder, signed.
 #
-# <feed> is where the release folder is hosted: GitHub Releases of quchenace/QuChen (the "latest" release's files), built in as the default.
+# <feed> is where the release folder is hosted: GitHub Releases of quchenace/QuChen-AI (the "latest" release's files), built in as the default.
 # Set $env:QUCHEN_FEED to another folder (a URL) to use that instead, for example a local test feed:  $env:QUCHEN_FEED='http://127.0.0.1:8099'; irm http://127.0.0.1:8099/install.ps1 | iex
 # Optional: $env:QUCHEN_DATA_DIR (default %LOCALAPPDATA%\QuChen), $env:QUCHEN_INSTALL_TEST_TRUST='1' (a test feed: trust only its
 # test-trust.json for step 4), $env:QUCHEN_NO_PATH='1' (do not change the user PATH).
@@ -26,7 +26,7 @@ function Die([string]$msg) { [Console]::Error.WriteLine("quchen installer: $msg"
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
 try { if ([Net.WebRequest]::DefaultWebProxy) { [Net.WebRequest]::DefaultWebProxy.Credentials = [Net.CredentialCache]::DefaultNetworkCredentials } } catch { }
 
-$feed = if ($env:QUCHEN_FEED) { $env:QUCHEN_FEED } else { 'https://github.com/quchenace/QuChen/releases/latest/download' }
+$feed = if ($env:QUCHEN_FEED) { $env:QUCHEN_FEED } else { 'https://github.com/quchenace/QuChen-AI/releases/latest/download' }
 $feed = $feed.TrimEnd('/')
 if (-not $feed) {
     Die 'this installer does not know where the QuChen release folder is. Set $env:QUCHEN_FEED to its address and run it again, for example: $env:QUCHEN_FEED=''https://example.org/quchen'''

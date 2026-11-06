@@ -34,7 +34,7 @@ match the GFXOFF-off rows to the token). The one-card configurations ran at the 
   table is read from the GGUF shard on it (`--ple-io direct`, the default).
 - **OS and runtime:** Ubuntu 26.04, kernel 7.0.0-38-generic with its own amdgpu driver (no DKMS), ROCm 10.0.0 (HIP
   7.15, rocBLAS 5.6.0.8d1ae90e). hipBLASLt ships no gfx1030 kernels, so the plain hipBLAS/rocBLAS path runs.
-- **Source, stock:** [quchenace/QuChen](https://github.com/quchenace/QuChen) `main` at `82f46a8` (engine 0.1.40.1).
+- **Source, stock:** [quchenace/QuChen-AI](https://github.com/quchenace/QuChen-AI) `main` at `82f46a8` (engine 0.1.40.1).
 - **Source, "PRs":** `82f46a8` with #1150 (PR #540's attention kernel on gfx103x, bit-exact), #1151 (the QSA block
   scores on rocBLAS SGEMM, opt-in `QUCHEN_SELECT_SGEMM=1`) and #1167 (a rocBLAS solution table for the FP16 prompt
   GEMMs, `QUCHEN_ROCBLAS_TUNING`) merged locally, plus #1148 (a test skip) and #1149 (tests and an off-by-default

@@ -47,7 +47,7 @@ Like any download, each connection below shows the other side your IP address an
 | Model files, the picture reader, the speed-up layer (MTP) | huggingface.co, or the mirror in `HF_ENDPOINT` if you set one | When you install a model |
 | The same model files when huggingface.co answers slowly from here | hf-mirror.com, the same repositories at the same pinned revisions | Only when setup's one HEAD probe finds the mirror faster before the first model file; the files are checked against the same SHA-256. `QUCHEN_FAST_MIRROR=off` keeps huggingface.co, `QUCHEN_FAST_MIRROR=hf-mirror` insists on the mirror, and `HF_ENDPOINT` always wins |
 | The same files from ModelScope, for PCs that cannot reach Hugging Face | modelscope.cn | Only if you ask for it (`--source modelscope`). QuChen never switches to it by itself |
-| Engine, Terminal and Control updates | The signed feed on GitHub Releases of quchenace/QuChen | When you install an engine, press **Update engine** or **Check for updates**, or run `quchen update`; the DeepSeek engine also on `quchen launch` (below). Opening **Settings, Engine** does not connect: it shows the result of your last check |
+| Engine, Terminal and Control updates | The signed feed on GitHub Releases of quchenace/QuChen-AI | When you install an engine, press **Update engine** or **Check for updates**, or run `quchen update`; the DeepSeek engine also on `quchen launch` (below). Opening **Settings, Engine** does not connect: it shows the result of your last check |
 | App updates | `latest.json` on the same GitHub Releases, through Tauri's updater | When you press **Check for updates** or **Update QuChen** |
 | llama.cpp source code (a fixed commit) | github.com/ggml-org/llama.cpp | During a model install, if it is not on your PC yet. QuChen uses only its model-preparation scripts |
 | Web search and web pages | DuckDuckGo, with Bing as the second source; or Exa, Perplexity or DeepSeek if you save a key for them. Any page the agent is asked to open goes to that page's site | When the agent uses its search or "open web pages" tool. In Manual mode it asks you first, once per chat |
@@ -146,7 +146,7 @@ check off, and it is never on by default.
 
 **The one-line install** (`curl ... | sh`, `irm ... | iex`) checks the Terminal archive's SHA-256 and the signed feed with the
 Terminal it just unpacked. The checksum and the key come from the same release as the archive, so the first install trusts
-HTTPS and the `quchenace/QuChen` release itself. What that means, and how to read the script first, is in
+HTTPS and the `quchenace/QuChen-AI` release itself. What that means, and how to read the script first, is in
 [SECURITY.md](../SECURITY.md#how-far-to-trust-curl--sh-and-irm--iex). Later updates are checked against the key already on
 your PC.
 
@@ -194,12 +194,12 @@ The agent runs on a loopback address with a random token, so other programs on t
 
 ## Open source and reporting a problem
 
-QuChen is MIT-licensed and the whole code is at [github.com/quchenace/QuChen](https://github.com/quchenace/QuChen). Read it, build
+QuChen is MIT-licensed and the whole code is at [github.com/quchenace/QuChen-AI](https://github.com/quchenace/QuChen-AI). Read it, build
 it and compare. QuChen has not had an outside security audit yet.
 
 To report a security problem, use GitHub's private reporting (the repository's **Security** tab), as described in
 [SECURITY.md](../SECURITY.md). Ordinary questions and ideas can go to an
-[issue](https://github.com/quchenace/QuChen/issues).
+[issue](https://github.com/quchenace/QuChen-AI/issues).
 
 ## Where to check this in the code
 

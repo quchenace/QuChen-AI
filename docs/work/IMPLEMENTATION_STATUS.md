@@ -16,7 +16,7 @@ volume with ~22 GiB free at the time of writing.
 | --- | --- |
 | `/Users/nikoveit/Documents/deepseek-harness/ENDING PLAN` | The handoff packet (authoritative inputs). Manifest verified: `shasum -a 256 -c MANIFEST.sha256` → all OK. |
 | `…/deepseek-harness/quchen-work/quchen-rebuild` | **The integration checkout.** Branch `quchen/rebuild-2026-10`. This is where implementation happens. |
-| `…/quchen-work/QuChen` | Pristine reference checkout of `quchenace/QuChen` at `main` (= reviewed pin `296b59d2`). Do not edit. |
+| `…/quchen-work/QuChen` | Pristine reference checkout of `quchenace/QuChen-AI` at `main` (= reviewed pin `296b59d2`). Do not edit. |
 | `…/quchen-work/deepseek-harness` | Pristine clone of `deepseek-ai/deepseek-harness` at `57190202` (= reviewed pin). |
 | `…/quchen-work/HyperCore-Tune` | Pristine clone at `4f9ab7fa` (= reviewed pin). |
 | `…/quchen-work/handover/ui` | Extracted authoritative UI ZIP (14 Oct). |

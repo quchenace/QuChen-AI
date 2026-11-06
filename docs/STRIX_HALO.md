@@ -19,7 +19,7 @@ the driver it needs and the limits.
 
 ## Quick start
 
-Use the [current release](https://github.com/quchenace/QuChen/releases/latest). You do not need to build ROCm for a packaged install.
+Use the [current release](https://github.com/quchenace/QuChen-AI/releases/latest). You do not need to build ROCm for a packaged install.
 
 | System | What to install | Engine variant |
 | --- | --- | --- |
@@ -142,7 +142,7 @@ llama.cpp's `ggml` sources are pinned by this repository, and CMake fetches the 
 `QUCHEN_GGML_DIR` at a checkout of exactly that revision.
 
 ```sh
-git clone https://github.com/quchenace/QuChen.git && cd QuChen
+git clone https://github.com/quchenace/QuChen-AI.git && cd QuChen
 cmake -S . -B build-halo -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DQUCHEN_ENABLE_HIP=ON -DQUCHEN_ENABLE_CUDA=OFF -DQUCHEN_PREFILL_MMQ=ON \
   -DCMAKE_HIP_ARCHITECTURES=gfx1151 \

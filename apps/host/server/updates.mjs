@@ -1,8 +1,8 @@
 import { OFFLINE_MESSAGE, looksOffline, plainUpdateError } from './update-messages.mjs';
 
 /** Read-only release checks. Installing/rolling back needs a managed installer. */
-const RELEASES = 'https://api.github.com/repos/quchenace/QuChen/releases?per_page=30';
-const RELEASE_PREFIX = 'https://github.com/quchenace/QuChen/releases/';
+const RELEASES = 'https://api.github.com/repos/quchenace/QuChen-AI/releases?per_page=30';
+const RELEASE_PREFIX = 'https://github.com/quchenace/QuChen-AI/releases/';
 
 function versionParts(value) {
   const match = /^v?(\d+)\.(\d+)\.(\d+)(?:\+[\w.-]+)?$/.exec(value ?? '');

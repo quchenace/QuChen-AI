@@ -35,7 +35,7 @@ Unchanged from the 0.1.40.1 report except the engine:
   read into RAM at start, `memlock` unlimited); the 0.1.40.1 report used the default `direct`.
 - **OS and runtime:** Ubuntu 26.04, kernel 7.0.0-38-generic with its own amdgpu driver, ROCm 10.0.0 (HIP 7.15, rocBLAS
   5.6.0.8d1ae90e). hipBLASLt ships no gfx1030 kernels; the plain rocBLAS path runs.
-- **Source, stock:** [quchenace/QuChen](https://github.com/quchenace/QuChen) `main` at `fb58e0db` (engine 0.1.41,
+- **Source, stock:** [quchenace/QuChen-AI](https://github.com/quchenace/QuChen-AI) `main` at `fb58e0db` (engine 0.1.41,
   2026-10-08), ggml from llama.cpp at the pinned `3cf03257f` (`QUCHEN_GGML_DIR` pointed at a checkout of that commit;
   the FetchContent default fetches the same one). Built with
   `-DCMAKE_BUILD_TYPE=Release -DQUCHEN_ENABLE_HIP=ON -DCMAKE_HIP_ARCHITECTURES=gfx1030 -DQUCHEN_PREFILL_MMQ=ON`.

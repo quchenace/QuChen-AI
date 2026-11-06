@@ -17,7 +17,7 @@ Nothing here is known to work on another ARM machine.
 ## Install with the Terminal
 
 ```sh
-curl -fsSL https://github.com/quchenace/QuChen/releases/latest/download/install.sh -o install.sh && sh install.sh
+curl -fsSL https://github.com/quchenace/QuChen-AI/releases/latest/download/install.sh -o install.sh && sh install.sh
 quchen launch
 ```
 

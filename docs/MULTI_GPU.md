@@ -254,7 +254,7 @@ memory), and the last line shown is the engine's own reason.
   with the 5080 alone, was taken over a fast CPU (Ryzen 9 9950X3D). When the CPU pool is what the window waits on, moving half the layers to a
   second identical card removes that work. This is one pair of cards and one CPU, so there is no threshold, and the window breakdown from the
   engine log is not the same statistic as the decode numbers beside it. Setup splits across two cards by itself; with two identical older cards
-  on a slow workstation CPU, compare one card against the split and tell us in [#3930](https://github.com/quchenace/QuChen/pull/3930).
+  on a slow workstation CPU, compare one card against the split and tell us in [#3930](https://github.com/quchenace/QuChen-AI/pull/3930).
 - For several conversations at once, `--batch N --batch-groups G --trim-stage-weights` pipelines them through the cards
   ([BATCHING.md](BATCHING.md)).
 

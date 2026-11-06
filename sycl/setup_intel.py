@@ -151,7 +151,7 @@ def is_b_series(driver: str, devid: str = "") -> bool:
 
 
 B_SERIES_LINE = ("This Intel Arc B-series card is new to QuChen and we have not tested it ourselves, so pictures and long answers may fail on it. "
-                 "If something fails, run again with --vision no to turn pictures off, and tell us at https://github.com/quchenace/QuChen/issues "
+                 "If something fails, run again with --vision no to turn pictures off, and tell us at https://github.com/quchenace/QuChen-AI/issues "
                  "(say it is a B-series card and attach the engine log).")
 
 

@@ -25,7 +25,7 @@ from quchen_control import updater  # noqa: E402
 
 COMMON = "quchen-feed.json"
 ARM = "quchen-feed-linux-aarch64.json"
-RELEASE = "https://github.com/quchenace/QuChen/releases/latest/download"
+RELEASE = "https://github.com/quchenace/QuChen-AI/releases/latest/download"
 
 
 def host(platform):

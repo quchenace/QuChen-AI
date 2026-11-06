@@ -15,8 +15,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/quchenace/QuChen/releases/latest"><img src="https://img.shields.io/github/v/release/quchenace/QuChen?label=download&color=0ab887" alt="Pobierz Stratę"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/quchenace/QuChen" alt="Licencja MIT"></a>
+  <a href="https://github.com/quchenace/QuChen-AI/releases/latest"><img src="https://img.shields.io/github/v/release/quchenace/QuChen-AI?label=download&color=0ab887" alt="Pobierz Stratę"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/quchenace/QuChen-AI" alt="Licencja MIT"></a>
 </p>
 
 <p align="center"><sub><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <a href="README.es.md">Español</a> · <a href="README.pt-BR.md">Português</a> · <b>Polski</b></sub></p>
@@ -79,7 +79,7 @@ Zmierzone na zestawie 2.00 bpw w QuChen 0.2.5 (Strix Halo: 0.2.7). „Wyjście�
 | 4x Radeon AI PRO R9700 | 74–77 tokenów/s | 400–450 tokenów/s (8K) |
 | Ryzen AI Max+ 395 (Strix Halo), 128 GB pamięci współdzielonej | 19–21 tokenów/s (kod), 11 (czat) | 87 tokenów/s (4K), 125 tokenów/s (8K) |
 
-[Pamięć, dysk i szczegóły](docs/DEEPSEEK41.md) · [Informacje o wydaniach](https://github.com/quchenace/QuChen/releases)
+[Pamięć, dysk i szczegóły](docs/DEEPSEEK41.md) · [Informacje o wydaniach](https://github.com/quchenace/QuChen-AI/releases)
 
 </details>
 
@@ -93,7 +93,7 @@ Nie wiesz, co się zmieści? [Wybierz model do swojego komputera](docs/MODELS.md
 
 ### Aplikacja na komputer
 
-**[Pobierz Stratę dla Windows, Linuxa lub Maca →](https://github.com/quchenace/QuChen/releases/latest)**
+**[Pobierz Stratę dla Windows, Linuxa lub Maca →](https://github.com/quchenace/QuChen-AI/releases/latest)**
 
 Zainstaluj aplikację, wybierz model i zacznij rozmawiać. Dla każdego systemu jest jeden instalator. Przy pierwszym
 uruchomieniu aplikacja pobiera silnik dla twojej karty graficznej. [Pomoc z instalatorem](docs/INSTALL.md#the-app).
@@ -117,13 +117,13 @@ Wolisz terminal? Zainstaluj Stratę, a potem uruchom **`quchen launch`**.
 **Linux / Mac**
 
 ```sh
-curl -fsSL https://github.com/quchenace/QuChen/releases/latest/download/install.sh -o install.sh && sh install.sh
+curl -fsSL https://github.com/quchenace/QuChen-AI/releases/latest/download/install.sh -o install.sh && sh install.sh
 ```
 
 **Windows PowerShell**
 
 ```powershell
-irm https://github.com/quchenace/QuChen/releases/latest/download/install.ps1 | iex
+irm https://github.com/quchenace/QuChen-AI/releases/latest/download/install.ps1 | iex
 ```
 
 W Windows otwórz potem nowe okno terminala. Następnie:
@@ -173,7 +173,7 @@ Uruchom **`quchen connect`**, aby zobaczyć instrukcję konfiguracji dla swojego
 
 ## Pomoc
 
-[Wszystkie przewodniki](docs) · [Rozwiązywanie problemów](docs/TROUBLESHOOTING.md) · [Zgłoś błąd](https://github.com/quchenace/QuChen/issues/new/choose) ·
+[Wszystkie przewodniki](docs) · [Rozwiązywanie problemów](docs/TROUBLESHOOTING.md) · [Zgłoś błąd](https://github.com/quchenace/QuChen-AI/issues/new/choose) ·
 [Testy wydajności](docs/COMMUNITY_BENCHMARKS.md) · [Jak to działa](docs/HOW_IT_WORKS.md) · [Współtworzenie](CONTRIBUTING.md)
 
 [Licencja MIT](LICENSE) · [Podziękowania i licencje modeli](docs/HOW_IT_WORKS.md#credits) · [Prywatność](docs/SAFETY.md)

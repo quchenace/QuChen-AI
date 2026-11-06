@@ -20,7 +20,7 @@ Suggested opening: **“Run powerful AI on your own computer. Chat, code and wor
    Gyro is a memory-saving option, currently slower. State the model, quantization and hardware used in any live demo.
 5. **Connect a familiar tool.** Examples include Claude Code, Codex CLI, OpenCode, oh-my-pi, pi.dev and Hermes Agent.
    Show a real successful connection if demonstrating one.
-6. **Close with the two useful links.** [Download QuChen](https://github.com/quchenace/QuChen/releases/latest)
+6. **Close with the two useful links.** [Download QuChen](https://github.com/quchenace/QuChen-AI/releases/latest)
 
 This is an outline, not evidence that any particular model, workflow or benchmark was tested for the video.
 
@@ -36,7 +36,7 @@ establish a current default model or universal performance.
 | Desktop app | [app-chat.png](media/app-chat.png) | Chat, files and a live preview in one window. The capture shows a Gyro model; do not relabel it as an ISTA or DeepSeek run. |
 | Terminal app | [terminal-monitor.png](media/terminal-monitor.png) | Model activity and hardware use. The capture shows a Gyro-S session; its live counters are not a standardized benchmark. |
 | Coding demo thumbnail | [pagoda-preview.webp](media/pagoda-preview.webp) | A voxel garden generated locally. |
-| Coding demo video | [Pagoda.mp4](https://github.com/quchenace/QuChen/releases/download/v0.1.10/Pagoda.mp4) | Existing 49-second demo, documented with an RTX 5070, IQ3_S and 128K context. Keep it separate from the GUI and TUI screenshots. |
+| Coding demo video | [Pagoda.mp4](https://github.com/quchenace/QuChen-AI/releases/download/v0.1.10/Pagoda.mp4) | Existing 49-second demo, documented with an RTX 5070, IQ3_S and 128K context. Keep it separate from the GUI and TUI screenshots. |
 | Engine explanation | [how-it-works.svg](media/how-it-works.svg), [guess-and-check.svg](media/guess-and-check.svg) | Illustrations of the documented Flash-Next engine path, not proof that every model uses the same path. |
 
 ## Accuracy rules
@@ -55,6 +55,6 @@ establish a current default model or universal performance.
 
 ## Links and contact
 
-- Project: [quchenace/QuChen](https://github.com/quchenace/QuChen)
-- Downloads: [Releases](https://github.com/quchenace/QuChen/releases/latest)
+- Project: [quchenace/QuChen-AI](https://github.com/quchenace/QuChen-AI)
+- Downloads: [Releases](https://github.com/quchenace/QuChen-AI/releases/latest)
 - Sponsorships, hardware partnerships and collaborations: [quchenace@users.noreply.github.com](mailto:quchenace@users.noreply.github.com)
