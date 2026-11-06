@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: ${{ fromJSON(format('["{0}"]', replace(inputs.variants, ',', '","')) }}
+        variant: ${{ fromJSON(inputs.variants) }}
     steps:
       - uses: actions/checkout@v4
 
