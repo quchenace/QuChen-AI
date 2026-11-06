@@ -45,7 +45,7 @@ jobs:
         with:
           cuda: ${{ steps.p.outputs.cuda }}
           method: network
-          use-github-cache: false
+          use-github-cache: true
 
       - uses: actions/setup-python@v5
         with:
@@ -60,11 +60,13 @@ jobs:
       - name: Configure
         shell: pwsh
         run: |
+          $ggml = Join-Path (Get-Location) "third_party\llama.cpp"
+          Write-Host "llama.cpp at $ggml"
           $archs = "${{ steps.p.outputs.archs }}" -split ";"
           $real = ($archs | ForEach-Object { "$_-real" }) -join ";"
           $cudaArch = "$real;$($archs[-1])-virtual"
           Write-Host "CUDA architectures: $cudaArch"
-          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DQUCHEN_ENABLE_CUDA=ON -DQUCHEN_BUILD_TESTS=OFF -DQUCHEN_EXPERIMENTAL_SM60=${{ steps.p.outputs.sm60 }} -DQUCHEN_NATIVE_EXPERTS=ON -DQUCHEN_PORTABLE=ON -DQUCHEN_Q6K_EXPERTS=ON -DQUCHEN_MMQ_KQUANTS=ON "-DCMAKE_CUDA_ARCHITECTURES=$cudaArch" "-DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler" -DQUCHEN_GGML_DIR=third_party/llama.cpp
+          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DQUCHEN_ENABLE_CUDA=ON -DQUCHEN_BUILD_TESTS=OFF -DQUCHEN_EXPERIMENTAL_SM60=${{ steps.p.outputs.sm60 }} -DQUCHEN_NATIVE_EXPERTS=ON -DQUCHEN_PORTABLE=ON -DQUCHEN_Q6K_EXPERTS=ON -DQUCHEN_MMQ_KQUANTS=ON "-DCMAKE_CUDA_ARCHITECTURES=$cudaArch" "-DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler" "-DQUCHEN_GGML_DIR=$ggml"
 
       - name: Build the engine
         shell: pwsh
