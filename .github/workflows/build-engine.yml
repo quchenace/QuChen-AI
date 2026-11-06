@@ -39,6 +39,13 @@ jobs:
           "sm60=$sm60" >> $env:GITHUB_OUTPUT
           "mindriver=$mind" >> $env:GITHUB_OUTPUT
 
+      - name: Toolchain versions
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationVersion
+          cl 2>&1 | Select-Object -First 1
+          nvcc --version | Select-Object -Last 2
+
       - uses: ilammy/msvc-dev-cmd@v1
 
       - uses: Jimver/cuda-toolkit@v0.2.36
@@ -64,7 +71,7 @@ jobs:
           $real = ($archs | ForEach-Object { "$_-real" }) -join ";"
           $cudaArch = "$real;$($archs[-1])-virtual"
           Write-Host "CUDA architectures: $cudaArch"
-          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DQUCHEN_ENABLE_CUDA=ON -DQUCHEN_BUILD_TESTS=OFF -DQUCHEN_EXPERIMENTAL_SM60=${{ steps.p.outputs.sm60 }} -DQUCHEN_NATIVE_EXPERTS=ON -DQUCHEN_PORTABLE=ON -DQUCHEN_Q6K_EXPERTS=ON -DQUCHEN_MMQ_KQUANTS=ON "-DCMAKE_CUDA_ARCHITECTURES=$cudaArch" -DQUCHEN_GGML_DIR=third_party/llama.cpp
+          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DQUCHEN_ENABLE_CUDA=ON -DQUCHEN_BUILD_TESTS=OFF -DQUCHEN_EXPERIMENTAL_SM60=${{ steps.p.outputs.sm60 }} -DQUCHEN_NATIVE_EXPERTS=ON -DQUCHEN_PORTABLE=ON -DQUCHEN_Q6K_EXPERTS=ON -DQUCHEN_MMQ_KQUANTS=ON "-DCMAKE_CUDA_ARCHITECTURES=$cudaArch" "-DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler" -DQUCHEN_GGML_DIR=third_party/llama.cpp
 
       - name: Build the engine
         shell: pwsh
