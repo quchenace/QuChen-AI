@@ -45,6 +45,7 @@ Like any download, each connection below shows the other side your IP address an
 | What | Where it goes | When |
 | --- | --- | --- |
 | Model files, the picture reader, the speed-up layer (MTP) | huggingface.co, or the mirror in `HF_ENDPOINT` if you set one | When you install a model |
+| The same model files when huggingface.co answers slowly from here | hf-mirror.com, the same repositories at the same pinned revisions | Only when setup's one HEAD probe finds the mirror faster before the first model file; the files are checked against the same SHA-256. `QUCHEN_FAST_MIRROR=off` keeps huggingface.co, `QUCHEN_FAST_MIRROR=hf-mirror` insists on the mirror, and `HF_ENDPOINT` always wins |
 | The same files from ModelScope, for PCs that cannot reach Hugging Face | modelscope.cn | Only if you ask for it (`--source modelscope`). QuChen never switches to it by itself |
 | Engine, Terminal and Control updates | The signed feed on GitHub Releases of quchenace/QuChen | When you install an engine, press **Update engine** or **Check for updates**, or run `quchen update`; the DeepSeek engine also on `quchen launch` (below). Opening **Settings, Engine** does not connect: it shows the result of your last check |
 | App updates | `latest.json` on the same GitHub Releases, through Tauri's updater | When you press **Check for updates** or **Update QuChen** |

@@ -176,6 +176,59 @@ def reachable(url: str, timeout: float = 5.0) -> bool:
         return False
 
 
+HF_MIRROR = "https://hf-mirror.com"      # the same repositories at the same pinned revisions, served from mainland China
+_fast_mirror = []                        # what use_fast_mirror() decided (once per process)
+
+
+def host_latency(host: str, timeout: float = 4.0) -> float:
+    """Seconds until `host` answers a HEAD on its model API (at most `timeout`), or inf when it does not answer."""
+    t0 = time.monotonic()
+    try:
+        _urlopen(urllib.request.Request(host.rstrip("/") + "/api/models?limit=1", method="HEAD",
+                                        headers={"User-Agent": "quchen-setup"}), timeout=timeout).close()
+        return time.monotonic() - t0
+    except OSError:
+        return float("inf")
+
+
+def fast_mirror() -> str:
+    """The host model files come from when none is named.  huggingface.co, or hf-mirror.com when huggingface.co is
+    slow from here and the mirror answers: the same repository at the same pinned revision and the same SHA-256, so
+    only the route changes.  QUCHEN_FAST_MIRROR: auto (default), off, or hf-mirror to insist on the mirror."""
+    want = (os.environ.get("QUCHEN_FAST_MIRROR") or "auto").strip().lower()
+    if want in ("off", "0", "no", "false", "hf", "huggingface"):
+        return HF_DEFAULT
+    if want in ("hf-mirror", "mirror"):
+        return HF_MIRROR
+    mirror_s, hf_s = host_latency(HF_MIRROR), host_latency(HF_DEFAULT)
+    return HF_MIRROR if mirror_s < hf_s and mirror_s < 4.0 else HF_DEFAULT
+
+
+def use_fast_mirror() -> None:
+    """Called once before the first model file is read: when HF_ENDPOINT names no host and the mirror answers faster
+    than huggingface.co, point this run at the mirror.  The pinned revisions and the SHA-256 checks are the same."""
+    if _fast_mirror:
+        return
+    _fast_mirror.append(True)
+    if (os.environ.get("HF_ENDPOINT") or "").strip():
+        return
+    host = fast_mirror()
+    if host == HF_DEFAULT:
+        return
+    os.environ["HF_ENDPOINT"] = host
+    say(f"  model files: {host} answers faster than huggingface.co from here; the same pinned revision is checked "
+        "against the same SHA-256 (QUCHEN_FAST_MIRROR=off keeps huggingface.co)")
+
+
+def mirrored_url(url: str) -> str:
+    """`url` on the host use_fast_mirror() chose - same repository, revision and file - else `url` unchanged."""
+    if not url.startswith(HF_DEFAULT + "/"):
+        return url
+    use_fast_mirror()
+    endpoint = hf_endpoint()
+    return url if endpoint == HF_DEFAULT else endpoint + url[len(HF_DEFAULT):]
+
+
 def model_source() -> str:
     """"modelscope" or "huggingface".  ModelScope only when --source modelscope / QUCHEN_SOURCE=modelscope asks for it;
     everything else (auto, a HF_ENDPOINT mirror chosen on purpose, #495) is Hugging Face.  Setup does not switch hosts
@@ -3275,6 +3328,7 @@ def download(url, dst: Path, what=None):
     if dst.exists() and done(dst):
         ok(f"{what or dst.name} already downloaded")
         return
+    url = mirrored_url(url)
     pin_here = file_pin(url) if url.startswith(("http://", "https://")) else None
     if pin_here and dst.is_file() and dst.stat().st_size == pin_here[0] and not dst.with_name(dst.name + ".part").exists():
         # a file copied in by hand (or whose mark was lost) that is the pinned size: check it here, no network, so a PC with every file
