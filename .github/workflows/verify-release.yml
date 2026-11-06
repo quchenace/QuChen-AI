@@ -1,0 +1,55 @@
+name: Verify release
+
+# Downloads a published release and checks it the way an installed app will: latest.json parses and names
+# windows-x86_64, and the installer signature verifies against the public key in tauri.conf.json.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (default: the latest)"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download the release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName); fi
+          echo "tag=$TAG" >> "$GITHUB_ENV"
+          mkdir -p verify
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.exe" --pattern "*.sig" --pattern "latest.json" --dir verify
+          ls -l verify
+
+      - name: latest.json names the Windows installer and its signature
+        run: |
+          python - <<PY
+          import json, pathlib
+          doc = json.loads(pathlib.Path("verify/latest.json").read_text())
+          print(json.dumps(doc, indent=2))
+          assert doc["version"], "no version in latest.json"
+          assert "windows-x86_64" in doc["platforms"], doc.get("platforms")
+          assert doc["platforms"]["windows-x86_64"]["signature"], "no signature"
+          assert doc["platforms"]["windows-x86_64"]["url"].endswith(".exe"), doc["platforms"]["windows-x86_64"]
+          print("latest.json OK, version", doc["version"])
+          PY
+
+      - name: The installer signature verifies against tauri.conf.json
+        run: |
+          V=$(python -c "import json;print(json.load(open('verify/latest.json'))['version'])")
+          EXE=$(ls verify/*.exe | head -n 1)
+          echo "verifying $EXE as version $V"
+          python packaging/feed_tool.py set-app-platform --app-json verify/tauri-latest.json --target windows-x86_64 --version "$V" --archive "$EXE" --sig "$EXE.sig"
+          cat verify/tauri-latest.json
