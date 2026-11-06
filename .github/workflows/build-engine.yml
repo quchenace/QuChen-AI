@@ -39,12 +39,6 @@ jobs:
           "sm60=$sm60" >> $env:GITHUB_OUTPUT
           "mindriver=$mind" >> $env:GITHUB_OUTPUT
 
-      - name: Toolchain versions
-        shell: pwsh
-        run: |
-          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationVersion
-          nvcc --version | Select-Object -Last 2
-
       - uses: ilammy/msvc-dev-cmd@v1
 
       - uses: Jimver/cuda-toolkit@v0.2.36
