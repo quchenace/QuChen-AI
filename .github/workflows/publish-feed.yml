@@ -54,7 +54,8 @@ jobs:
         run: |
           mkdir -p key RELEASE/engine
           printf '%s' "$FEED_KEY" > key/feed-key.json
-          for d in artifacts/*/; do
+          for d in artifacts/*/*/ artifacts/*/; do
+            [ -f "$d/engine-component.json" ] || continue
             echo "package: $d"
             python packaging/feed_tool.py sign-package "$d" --key key/feed-key.json
             python packaging/feed_tool.py pack-engine "$d" --out RELEASE/engine --url-prefix=
