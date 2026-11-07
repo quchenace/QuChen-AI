@@ -29,7 +29,7 @@ $work = Join-Path ([IO.Path]::GetTempPath()) ('quchen-app-' + [Guid]::NewGuid().
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
     Write-Host '  Finding the newest release...'
-    try { Invoke-WebRequest -UseBasicParsing -Uri "$feed/latest.json" -OutFile (Join-Path $work 'latest.json') }
+    try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 40 -Uri "$feed/latest.json" -OutFile (Join-Path $work 'latest.json') }
     catch { Die "could not read $feed/latest.json ($($_.Exception.Message)). Check your internet connection and run this again." }
     $latest = Get-Content (Join-Path $work 'latest.json') -Raw | ConvertFrom-Json
     $entry = $latest.platforms.'windows-x86_64'
@@ -48,7 +48,7 @@ try {
         try { Start-BitsTransfer -Source $url -Destination $exe -Description 'QuChen' -ErrorAction Stop } catch { }
     }
     if (-not (Test-Path $exe)) {
-        $job = Start-Job -ScriptBlock { param($u, $o) Invoke-WebRequest -UseBasicParsing -Uri $u -OutFile $o } -ArgumentList $url, $exe
+        $job = Start-Job -ScriptBlock { param($u, $o) Invoke-WebRequest -UseBasicParsing -TimeoutSec 3600 -Uri $u -OutFile $o } -ArgumentList $url, $exe
         while ($job.State -eq 'Running') {
             Start-Sleep -Milliseconds 700
             if (Test-Path $exe) {
@@ -61,12 +61,12 @@ try {
         Remove-Job $job -Force
         Write-Host ''
     }
-    if (-not (Test-Path $exe)) { Die "the download failed. Open $url in a browser instead." }
+    if (-not (Test-Path $exe)) { Die "the download failed - github.com is often slow or blocked in mainland China. Open $url in a browser, or set QUCHEN_FEED to a mirror folder that holds the installer." }
     $size = [math]::Round((Get-Item $exe).Length / 1MB)
     Write-Host ("  " + $size + " MB in " + [math]::Round($sw.Elapsed.TotalSeconds) + " s")
 
     try {
-        Invoke-WebRequest -UseBasicParsing -Uri "$feed/SHA256SUMS.txt" -OutFile (Join-Path $work 'SHA256SUMS.txt')
+        Invoke-WebRequest -UseBasicParsing -TimeoutSec 40 -Uri "$feed/SHA256SUMS.txt" -OutFile (Join-Path $work 'SHA256SUMS.txt')
         $line = Get-Content (Join-Path $work 'SHA256SUMS.txt') | Where-Object { $_ -match [regex]::Escape($name) } | Select-Object -First 1
         if ($line) {
             $want = ($line -split '\s+')[0].ToLower()
