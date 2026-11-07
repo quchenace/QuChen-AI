@@ -92,6 +92,7 @@ jobs:
         with:
           name: exe-${{ matrix.variant }}
           path: build/quchen.exe
+          include-hidden-files: true
           if-no-files-found: error
 
       - name: Package
@@ -114,5 +115,6 @@ jobs:
         with:
           name: engine-${{ matrix.variant }}
           path: out-engine/**
+          include-hidden-files: true
           if-no-files-found: error
 

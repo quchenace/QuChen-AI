@@ -89,4 +89,5 @@ jobs:
         with:
           name: engine-hip-${{ inputs.variant }}
           path: out-engine/**
+          include-hidden-files: true
           if-no-files-found: error
