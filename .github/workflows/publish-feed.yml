@@ -82,3 +82,7 @@ jobs:
           ls -R RELEASE | head -30
           gh release upload "$TAG" RELEASE/quchen-feed.json RELEASE/quchen-feed.json.sig --clobber
           gh release upload "$TAG" RELEASE/engine/* --clobber
+
+      - name: Show the feed
+        run: |
+          python -c "import json;d=json.load(open('RELEASE/quchen-feed.json'));print(json.dumps(d,indent=1))"
