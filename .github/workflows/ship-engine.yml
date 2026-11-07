@@ -1,0 +1,33 @@
+name: Ship engine package
+
+# Puts one published engine archive and the signed feed into an artifact, so they can be handed to a PC that
+# cannot reach github.com's asset CDN. Install with: quchen components install-file <archive> --feed <folder>.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pattern:
+        description: "release asset pattern, e.g. *hip-rx9070*"
+        default: "*hip-rx9070*"
+
+permissions:
+  contents: read
+
+jobs:
+  ship:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download from the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          mkdir -p dist
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "${{ inputs.pattern }}" --pattern "quchen-feed.json" --pattern "quchen-feed.json.sig" --dir dist
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-package
+          path: dist/**
+          if-no-files-found: error
