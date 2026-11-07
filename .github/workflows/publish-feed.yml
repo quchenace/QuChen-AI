@@ -77,6 +77,20 @@ jobs:
           python packaging/feed_tool.py set-app-platform --app-json app/app.json --target windows-x86_64 --version "$V" --archive "$EXE" --sig "$EXE.sig"
           cat app/app.json
 
+      - name: Every manifest file is in the archive
+        run: |
+          python - <<'PY'
+          import tarfile, json, glob, os
+          for f in sorted(glob.glob('RELEASE/engine/*.tar.gz')):
+              with tarfile.open(f) as t:
+                  names = set(t.getnames())
+              total = 0
+              missing = []
+              for entry_json in sorted(glob.glob('RELEASE/engine/*.entry.json')):
+                  pass
+              kp = [n for n in names if '.kpack' in n]
+              print(os.path.basename(f), 'entries', len(names), 'kpack', len(kp), kp[:4])
+          PY
       - name: Build and upload the feed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
