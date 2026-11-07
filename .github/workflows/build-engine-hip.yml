@@ -1,0 +1,92 @@
+name: Engine package (Windows HIP)
+
+# Builds the AMD (HIP) engine package: quchen.exe + the ROCm libraries and kernels it loads.
+# ROCm comes from AMD's TheRock Python wheels - no AMD GPU and no administrator needed on the runner.
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: "rx9070 | rdna3 | rdna2"
+        default: "rx9070"
+
+permissions:
+  contents: write
+
+jobs:
+  hip:
+    runs-on: windows-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Variant
+        id: v
+        shell: pwsh
+        run: |
+          switch ("${{ inputs.variant }}") {
+            "rx9070" { $archs = "gfx1200;gfx1201"; $mind = "25.6.1" }
+            "rdna3"  { $archs = "gfx1100;gfx1101;gfx1102;gfx1151"; $mind = "25.6.1" }
+            "rdna2"  { $archs = "gfx1030;gfx1031"; $mind = "25.6.1" }
+            default { throw "unknown variant" }
+          }
+          "archs=$archs" >> $env:GITHUB_OUTPUT
+          "mind=$mind" >> $env:GITHUB_OUTPUT
+
+      - name: Visual Studio 2022 Build Tools
+        shell: pwsh
+        run: choco install visualstudio2022buildtools --no-progress -y --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --quiet --wait"
+
+      - name: Use VS 2022
+        shell: pwsh
+        run: |
+          $vcvars = 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat'
+          if (-not (Test-Path $vcvars)) { throw "VS 2022 not installed" }
+          cmd /c "`"$vcvars`" && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { Add-Content -Path $env:GITHUB_ENV -Value ($matches[1] + '=' + $matches[2]) }
+          }
+
+      - name: ROCm (TheRock wheels)
+        shell: pwsh
+        run: |
+          python -m venv .rocm-win
+          $pkgs = @()
+          foreach ($a in ("${{ steps.v.outputs.archs }}" -split ";")) { $pkgs += "device-$a" }
+          $extra = (@("libraries", "devel") + $pkgs) -join ","
+          Write-Host "rocm[$extra]==10.2.0a20260930"
+          .\.rocm-win\Scripts\python.exe -m pip install --disable-pip-version-check --index-url https://nightly.repo.amd.com/rocm/whl-next/ "rocm[$extra]==10.2.0a20260930"
+          .\.rocm-win\Scripts\rocm-sdk.exe init
+          $root = .\.rocm-win\Scripts\rocm-sdk.exe path --root
+          "ROCM=$root" >> $env:GITHUB_ENV
+          Write-Host "ROCm at $root"
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $rocm = ($env:ROCM -replace '\\', '/')
+          $ggml = Join-Path (Get-Location) 'third_party/llama.cpp'
+          python -c "import setup; print(setup.get_llama_cpp())"
+          $env:HIP_PLATFORM = 'amd'; $env:HIP_PATH = $rocm; $env:ROCM_PATH = $rocm
+          $env:PATH = "$rocm\bin;$rocm\lib\llvm\bin;$env:PATH"
+          cmake -G Ninja -S . -B build-hip -DCMAKE_BUILD_TYPE=Release -DQUCHEN_ENABLE_HIP=ON -DQUCHEN_ENABLE_CUDA=OFF -DQUCHEN_BUILD_TESTS=OFF -DQUCHEN_PREFILL_MMQ=ON -DQUCHEN_NATIVE_EXPERTS=ON -DQUCHEN_PORTABLE=ON "-DCMAKE_HIP_ARCHITECTURES=${{ steps.v.outputs.archs }}" "-DCMAKE_C_COMPILER=$rocm/lib/llvm/bin/clang.exe" "-DCMAKE_CXX_COMPILER=$rocm/lib/llvm/bin/clang++.exe" "-DCMAKE_HIP_COMPILER=$rocm/lib/llvm/bin/clang++.exe" "-DCMAKE_HIP_COMPILER_ROCM_ROOT=$rocm" "-DCMAKE_PREFIX_PATH=$rocm" "-DCMAKE_HIP_FLAGS=--rocm-path=$rocm --rocm-device-lib-path=$rocm/lib/llvm/amdgcn/bitcode" "-DQUCHEN_GGML_DIR=$ggml"
+          cmake --build build-hip --target quchen quchen-device -j 4
+
+      - name: Stage and package
+        shell: pwsh
+        run: |
+          python tools/hip/package_windows.py --build build-hip --rocm "$env:ROCM" --archs "${{ steps.v.outputs.archs }}" --rocm-version 10.2.0a20260930 --out dist
+          $ver = (Select-String -Path CMakeLists.txt -Pattern "project\(quchen VERSION ([0-9.]+)").Matches[0].Groups[1].Value
+          $archArgs = @()
+          foreach ($a in ("${{ steps.v.outputs.archs }}" -split ";")) { $archArgs += @("--arch", $a) }
+          python packaging/package_engine.py --src dist/quchen-windows-x64-hip --backend hip --version $ver --out out-engine @archArgs --variant "${{ inputs.variant }}" --platform windows-x86_64 --tree
+          Get-ChildItem out-engine -Recurse -Depth 1 | Select-Object FullName | Select-Object -First 20
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-hip-${{ inputs.variant }}
+          path: out-engine/**
+          if-no-files-found: error
