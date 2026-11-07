@@ -1,0 +1,84 @@
+name: Publish the feed
+
+# Takes the engine package an Engine packages run built, signs it, and publishes quchen-feed.json (+ .sig)
+# and the archive to the latest release. No rebuild: the package comes from that run's artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Engine packages run id (default: the newest successful one)"
+        required: false
+      variant:
+        description: "Artifact to publish"
+        default: "cuda13"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  feed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Find the engine run
+        id: run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUN="${{ inputs.run_id }}"
+          if [ -z "$RUN" ]; then
+            RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-engine.yml --status success --limit 1 --json databaseId -q '.[0].databaseId')
+          fi
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+          echo "using run $RUN"
+
+      - name: Download the engine package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p artifacts
+          gh run download ${{ steps.run.outputs.run }} --repo "$GITHUB_REPOSITORY" -n "engine-${{ inputs.variant }}" -D artifacts
+          ls -R artifacts | head -30
+
+      - name: Sign and pack
+        env:
+          FEED_KEY: ${{ secrets.QUCHEN_FEED_KEY }}
+        run: |
+          mkdir -p key RELEASE/engine
+          printf '%s' "$FEED_KEY" > key/feed-key.json
+          for d in artifacts/*/; do
+            echo "package: $d"
+            python packaging/feed_tool.py sign-package "$d" --key key/feed-key.json
+            python packaging/feed_tool.py pack-engine "$d" --out RELEASE/engine --url-prefix=
+          done
+          ls -R RELEASE/engine
+
+      - name: App entry with its sha256
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          V=${TAG#v}
+          mkdir -p app
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.exe" --pattern "*.exe.sig" --dir app
+          EXE=$(ls app/*.exe | head -n 1)
+          echo "app: $EXE version $V"
+          python packaging/feed_tool.py set-app-platform --app-json app/app.json --target windows-x86_64 --version "$V" --archive "$EXE" --sig "$EXE.sig"
+          cat app/app.json
+
+      - name: Build and upload the feed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          python packaging/feed_tool.py build-feed --out RELEASE --sequence 1 --key key/feed-key.json --engine RELEASE/engine --app-json app/app.json
+          ls -R RELEASE | head -30
+          gh release upload "$TAG" RELEASE/quchen-feed.json RELEASE/quchen-feed.json.sig --clobber
+          gh release upload "$TAG" RELEASE/engine/* --clobber
