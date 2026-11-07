@@ -44,12 +44,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p artifacts
-          gh run download ${{ steps.run.outputs.run }} --repo "$GITHUB_REPOSITORY" -n "engine-${{ inputs.variant }}" -D artifacts
+          gh run download ${{ steps.run.outputs.run }} --repo "$GITHUB_REPOSITORY" -p "engine-*" -D artifacts
           ls -R artifacts | head -30
 
       - name: Sign and pack
         env:
           FEED_KEY: ${{ secrets.QUCHEN_FEED_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p key RELEASE/engine
           printf '%s' "$FEED_KEY" > key/feed-key.json
@@ -58,6 +59,8 @@ jobs:
             python packaging/feed_tool.py sign-package "$d" --key key/feed-key.json
             python packaging/feed_tool.py pack-engine "$d" --out RELEASE/engine --url-prefix=
           done
+          TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.entry.json" --pattern "quchen-engine-*.tar.gz" --dir RELEASE/engine --clobber || true
           ls -R RELEASE/engine
 
       - name: App entry with its sha256
