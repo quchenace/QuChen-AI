@@ -54,14 +54,15 @@ jobs:
         run: |
           mkdir -p key RELEASE/engine
           printf '%s' "$FEED_KEY" > key/feed-key.json
+          TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.entry.json" --pattern "quchen-engine-*.tar.gz" --dir RELEASE/engine --clobber || true
+          echo "existing engine files:" && ls RELEASE/engine | head -20
           for d in artifacts/*/*/ artifacts/*/; do
             [ -f "$d/engine-component.json" ] || continue
             echo "package: $d"
             python packaging/feed_tool.py sign-package "$d" --key key/feed-key.json
             python packaging/feed_tool.py pack-engine "$d" --out RELEASE/engine --url-prefix=
           done
-          TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.entry.json" --pattern "quchen-engine-*.tar.gz" --dir RELEASE/engine --clobber || true
           ls -R RELEASE/engine
 
       - name: App entry with its sha256
