@@ -37,6 +37,7 @@ try {
     $version = $latest.version
     $url = $entry.url
     $name = [IO.Path]::GetFileName(([Uri]$url).AbsolutePath)
+    if ($env:QUCHEN_FEED) { $url = "$feed/" + $name }   # a mirror that holds the installer beside latest.json
     Write-Host "  Version $version" -ForegroundColor Green
     Write-Host "  $name"
 
