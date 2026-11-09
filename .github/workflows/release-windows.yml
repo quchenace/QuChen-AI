@@ -89,6 +89,20 @@ jobs:
           releaseBody: |
             Windows installer for QuChen ${{ steps.ver.outputs.version }}.
             Installed copies find this release through latest.json and update in place.
+
+            ## 更新说明
+
+            ### 集成与一键同步（API 服务页右上角）
+            - **一键同步到 DeepSeek Harness**：把当前在跑的模型（以及引擎列出的全部模型）写进 Harness 配置，
+              其它条目原样保留；地址固定走 127.0.0.1:18080 代理，引擎换端口也不受影响。
+            - **免费网关（LiteLLM）**：一键启动/停止；网关在跑时，它暴露的全部模型
+              （deepseek-v4.1-flash / deepseek-v4.1-flash-think / fast / zero …）一并写进 Harness。
+            - **暂停模型**：暂停后不再接受新的 API 请求，模型仍留在显存；恢复即继续。
+            - 以上三项都需要口令。
+
+            ### 修复
+            - 引擎包补齐 rocm/.kpack，AMD 卡首次启动不再卡在安全校验。
+            - 发布流程把引擎 feed 一并带到新版本，检查更新不再 404。
           releaseDraft: false
           prerelease: false
           args: >-
@@ -108,3 +122,21 @@ jobs:
           "$hash  $($exe.Name)" | Set-Content -Path SHA256SUMS.txt -Encoding ascii
           Write-Host "SHA256SUMS.txt: $((Get-Content SHA256SUMS.txt) -join '')"
           gh release upload $tag SHA256SUMS.txt install-app.ps1 install-app.cmd --clobber
+
+      - name: Carry the engine feed and archives into this release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TO="${{ steps.ver.outputs.tag }}"
+          FROM=""
+          for t in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 20 --json tagName -q '.[].tagName'); do
+            if [ "$t" = "$TO" ]; then continue; fi
+            if gh release view "$t" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | grep -qx 'quchen-feed.json'; then FROM="$t"; break; fi
+          done
+          echo "carrying the engine assets from $FROM into $TO"
+          if [ -z "$FROM" ]; then echo "::warning::no earlier release carries quchen-feed.json"; exit 0; fi
+          mkdir -p carry
+          gh release download "$FROM" --repo "$GITHUB_REPOSITORY" --pattern 'quchen-*' --dir carry
+          gh release upload "$TO" carry/* --clobber
+          echo "carried $(ls carry | wc -l) files"

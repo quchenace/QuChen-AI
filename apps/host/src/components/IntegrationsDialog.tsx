@@ -6,8 +6,9 @@ import { tr } from '../lib/i18n';
 type Harness = {
     profile: string; exists: boolean; current: string | null;
     model: string | null; port: number | null; baseUrl: string | null; via: string;
+    localModels: string[]; gatewayModels: string[];
 };
-type Gateway = { dir: string; present: boolean; running: boolean; port: number };
+type Gateway = { dir: string; present: boolean; running: boolean; port: number; models: string[] };
 type Status = { harness: Harness; gateway: Gateway };
 
 /**
@@ -65,6 +66,11 @@ export function IntegrationsDialog({ open, onClose, paused, onPaused }: {
                 <p className="small muted">
                     {h?.baseUrl ? `${tr('将写入地址')}: ${h.baseUrl} (${h.via})` : tr('还没有可用的 API 地址。')}
                 </p>
+                {h ? <p className="small">
+                    {`${tr('会写入')} ${h.localModels.length} ${tr('个本地模型')}${withGateway ? ` · ${h.gatewayModels.length} ${tr('个网关模型')}` : ''}`}
+                </p> : null}
+                {h && h.localModels.length ? <p className="small muted">{h.localModels.slice(0, 6).join(' · ')}{h.localModels.length > 6 ? ' …' : ''}</p> : null}
+                {withGateway && h && h.gatewayModels.length ? <p className="small muted">{h.gatewayModels.join(' · ')}</p> : null}
                 <label className="row small">
                     <input type="checkbox" checked={withGateway} onChange={(e) => setWithGateway(e.target.checked)}/>
                     <span>{tr('同时把免费网关加进去')}</span>
@@ -80,7 +86,7 @@ export function IntegrationsDialog({ open, onClose, paused, onPaused }: {
             <section className="card">
                 <h3 className="card__title">{tr('免费网关 (LiteLLM)')}</h3>
                 <p className="small muted">{g ? g.dir : ''}</p>
-                <p className="small">{g?.running ? tr('运行中 · 127.0.0.1:4000') : tr('未运行')}</p>
+                <p className="small">{g?.running ? tr('运行中 · 127.0.0.1:4000') : tr('未运行')}{g && g.models.length ? ` · ${g.models.length} ${tr('个模型')}` : ''}</p>
                 <div className="row">
                     <Btn disabled={!ready || pending !== '' || !g?.present}
                         onClick={() => void run('gw-start', () => api.post('/api/integrations/gateway', { password: passcode.trim(), action: 'start' }), tr('网关已启动（约 20 秒后就绪）。'))}>

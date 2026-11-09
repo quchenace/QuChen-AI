@@ -1,0 +1,44 @@
+name: Carry the engine assets
+
+# The app updater and the Control both read "releases/latest/download/quchen-feed.json", so whichever
+# release is newest must carry the engine feed and the archives it points at. This copies them from the
+# release that has them into the one that needs them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_tag:
+        description: "release to copy from (default: the newest one that has quchen-feed.json)"
+        required: false
+      to_tag:
+        description: "release to copy into (default: the latest)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  carry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy the feed and the engine archives
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TO="${{ inputs.to_tag }}"
+          if [ -z "$TO" ]; then TO=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName); fi
+          FROM="${{ inputs.from_tag }}"
+          if [ -z "$FROM" ]; then
+            for t in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 20 --json tagName -q '.[].tagName'); do
+              if [ "$t" = "$TO" ]; then continue; fi
+              if gh release view "$t" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | grep -qx 'quchen-feed.json'; then FROM="$t"; break; fi
+            done
+          fi
+          echo "from=$FROM to=$TO"
+          if [ -z "$FROM" ]; then echo "no release carries the feed yet"; exit 1; fi
+          mkdir -p carry
+          gh release download "$FROM" --repo "$GITHUB_REPOSITORY" --pattern 'quchen-*' --dir carry
+          ls -l carry
+          gh release upload "$TO" carry/* --clobber
+          echo "carried $(ls carry | wc -l) assets into $TO"
