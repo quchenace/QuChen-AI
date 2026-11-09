@@ -160,7 +160,7 @@ export async function gatewayStatus() {
   const models = running ? await listModels('http://127.0.0.1:' + GATEWAY_PORT + '/v1', gatewayKey()) : [];
   return {
     dir, port: GATEWAY_PORT, running, home: gatewayHome(),
-    present: existsSync(join(dir, '.venv', 'Scripts', 'litellm.exe')),
+    present: existsSync(join(dir, '.venv', 'Scripts', 'litellm.exe')) || existsSync(join(dir, '.venv', 'Scripts', 'python.exe')),
     models: models.length ? models : configuredGatewayModels(),
     pid: readSettings().gatewayPid ?? null,
     log: logTail(),
@@ -223,6 +223,10 @@ export async function gatewayInstall() {
     }
   }
   writeFileSync(join(home, '.env'), env, 'utf8');
+  if (existsSync(join(venv, 'Scripts', 'litellm.exe'))) {
+    writeSettings({ gatewayDir: home, gatewayInstalled: readSettings().gatewayInstalled ?? new Date().toISOString() });
+    return gatewayStatus();
+  }
   if (!existsSync(join(venv, 'Scripts', 'python.exe'))) {
     await runCapture(py, ['-m', 'venv', venv], {});
   }
@@ -235,9 +239,15 @@ export async function gatewayInstall() {
 
 export async function gatewayStart() {
   if (await portOpen(GATEWAY_PORT)) return gatewayStatus();
-  const dir = gatewayDir();
-  const exe = join(dir, '.venv', 'Scripts', 'litellm.exe');
-  if (!existsSync(exe)) throw new Error('这个文件夹里没有网关：' + dir);
+  let dir = gatewayDir();
+  let exe = join(dir, '.venv', 'Scripts', 'litellm.exe');
+  if (!existsSync(exe)) {
+    // Nothing usable here: set it up (or repair a half-finished one), then start it.
+    await gatewayInstall();
+    dir = gatewayHome();
+    exe = join(dir, '.venv', 'Scripts', 'litellm.exe');
+    if (!existsSync(exe)) throw new Error('网关安装没有完成（找不到 ' + exe + '）。检查网络后点「安装」再试一次。');
+  }
   mkdirSync(DATA, { recursive: true });
   const fd = openSync(gatewayLog(), 'a');
   const env = { ...process.env, ...envFile(dir), PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', LITELLM_LOCAL_MODEL_COST_MAP: 'True' };
@@ -306,10 +316,32 @@ export async function vpnInstall() {
   const dir = vpnHome();
   mkdirSync(dir, { recursive: true });
   const file = join(dir, asset.name);
-  const res = await fetch(asset.browser_download_url, { signal: AbortSignal.timeout(900000) });
-  if (!res.ok) throw new Error('下载失败（HTTP ' + res.status + '）。');
-  writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+  let bytes;
+  try {
+    const res = await fetch(asset.browser_download_url, { signal: AbortSignal.timeout(900000) });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    bytes = Buffer.from(await res.arrayBuffer());
+  } catch (e) {
+    throw new Error('下载失败：这台电脑到不了 GitHub 的下载服务器（' + (e && e.message ? e.message : 'network') + '）。用「从本地文件…」选一个 QuChenVPN 压缩包即可。');
+  }
+  writeFileSync(file, bytes);
   if (/\.zip$/i.test(asset.name)) {
+    await new Promise((resolve, reject) => execFile('powershell.exe',
+      ['-NoProfile', '-Command', "Expand-Archive -LiteralPath '" + file + "' -DestinationPath '" + dir + "' -Force"],
+      { windowsHide: true }, (e) => (e ? reject(new Error('解压失败：' + e.message)) : resolve(null))));
+    try { rmSync(file, { force: true }); } catch { /* stays */ }
+  }
+  return vpnStatus();
+}
+
+/** Install from a zip/exe the person already has (the network may not reach GitHub). */
+export async function vpnInstallFromFile(bytes, name) {
+  const dir = vpnHome();
+  mkdirSync(dir, { recursive: true });
+  const safe = String(name || 'QuChenVPN.zip').replace(/[^\w.\-\u4e00-\u9fa5]/g, '_');
+  const file = join(dir, safe);
+  writeFileSync(file, bytes);
+  if (/\.zip$/i.test(safe)) {
     await new Promise((resolve, reject) => execFile('powershell.exe',
       ['-NoProfile', '-Command', "Expand-Archive -LiteralPath '" + file + "' -DestinationPath '" + dir + "' -Force"],
       { windowsHide: true }, (e) => (e ? reject(new Error('解压失败：' + e.message)) : resolve(null))));

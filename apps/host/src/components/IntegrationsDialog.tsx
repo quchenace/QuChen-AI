@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Btn, Dialog, ErrorNotice } from './ui';
 import { api } from '../lib/client';
 import { tr } from '../lib/i18n';
@@ -39,6 +39,7 @@ export function IntegrationsDialog({ open, onClose, paused, onPaused }: {
     const [error, setError] = useState('');
     const [note, setNote] = useState('');
     const [showLog, setShowLog] = useState(false);
+    const file = useRef<HTMLInputElement>(null);
 
     async function load() {
         try { setStatus(await api.get<Status>('/api/integrations')); }
@@ -52,6 +53,24 @@ export function IntegrationsDialog({ open, onClose, paused, onPaused }: {
         return () => clearInterval(timer);
     }, [open]);
 
+    async function upload(picked: File) {
+        if (!unlocked && !passcode.trim()) { setError(tr('先输入口令。')); return; }
+        setPending('vpn'); setError(''); setNote('');
+        try {
+            const res = await fetch('/api/integrations/vpn-file', {
+                method: 'POST',
+                headers: { 'x-passcode': passcode.trim(), 'x-file-name': picked.name },
+                body: picked,
+            });
+            const body = await res.json().catch(() => ({} as { error?: string }));
+            if (!res.ok) throw new Error((body as { error?: string })?.error ?? '安装失败。');
+            setUnlocked(true);
+            setNote(tr('装好了，点「启动」即可。'));
+            await load();
+        } catch (e) {
+            setError(e instanceof Error ? e.message : String(e));
+        } finally { setPending(''); }
+    }
     async function call(name: string, url: string, body: Record<string, unknown>, done: string): Promise<boolean> {
         if (!unlocked && !passcode.trim()) { setError(tr('先输入口令。')); return false; }
         setPending(name); setError(''); setNote('');
@@ -150,10 +169,11 @@ export function IntegrationsDialog({ open, onClose, paused, onPaused }: {
                             ? <Btn size="sm" icon="download" disabled={!ready || pending !== ''} onClick={() => void call('vpn', '/api/integrations/vpn', { action: 'install' }, tr('装好了，点「启动」即可。'))}>{pending === 'vpn' ? tr('下载中…') : tr('下载安装')}</Btn>
                             : v.running
                                 ? <Btn size="sm" variant="ghost" disabled={!ready || pending !== ''} onClick={() => void call('vpn', '/api/integrations/vpn', { action: 'stop' }, tr('已停止。'))}>{tr('停止')}</Btn>
-                                : <Btn size="sm" icon="bolt" disabled={!ready || pending !== ''} onClick={() => void call('vpn', '/api/integrations/vpn', { action: 'start' }, tr('已启动，看托盘图标。'))}>{tr('启动')}</Btn>}
+                                : <><Btn size="sm" variant="ghost" disabled={!ready || pending !== ''} onClick={() => file.current?.click()}>{tr('从本地文件…')}</Btn><Btn size="sm" icon="bolt" disabled={!ready || pending !== ''} onClick={() => void call('vpn', '/api/integrations/vpn', { action: 'start' }, tr('已启动，看托盘图标。'))}>{tr('启动')}</Btn></>}
                     </div>
                 </div>
-                <p className="small muted" style={{ margin: '6px 0 0' }}>{tr('只有需要访问 GitHub 时才用；不装也不影响聊天和网关。')}</p>
+                <p className="small muted" style={{ margin: '6px 0 0' }}>{tr('只有需要访问 GitHub 时才用；不装也不影响聊天和网关。下载失败时，可以用「从本地文件…」选一个 QuChenVPN 压缩包。')}</p>
+                <input ref={file} type="file" accept=".zip,.exe" hidden onChange={(e) => { const picked = e.target.files?.[0]; if (!picked) return; void upload(picked); e.target.value = ''; }}/>
             </section>
 
             {note ? <p className="small">{note}</p> : null}

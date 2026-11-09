@@ -1688,6 +1688,12 @@ async function api(req, res, path, method, url) {
     if (body?.action === 'stop') return json(res, 200, await integrations.vpnStop());
     return json(res, 200, await integrations.vpnStart());
   }
+  if (path === '/api/integrations/vpn-file' && method === 'POST') {
+    if (!integrations.passcodeOk(req.headers['x-passcode'])) return error(res, 403, '口令不正确。');
+    const name = String(req.headers['x-file-name'] ?? 'QuChenVPN.zip').slice(0, 120);
+    const bytes = await readRaw(req, 512 * 1024 * 1024);
+    return json(res, 200, await integrations.vpnInstallFromFile(bytes, name));
+  }
   if (path === '/api/integrations/pause' && method === 'POST') {
     const body = await readBody(req);
     if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
