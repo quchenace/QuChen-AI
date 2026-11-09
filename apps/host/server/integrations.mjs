@@ -59,7 +59,10 @@ function writeSettings(patch) {
 
 /** The app's own model-connection store, so the gateway shows up as a normal model source. */
 let providerStore = null;
-export function attachProviders(store) { providerStore = store; }
+export function attachProviders(store) {
+  providerStore = store;
+  setTimeout(() => { void ensureGatewayConnection().catch(() => null); }, 4000);
+}
 
 /** Register or refresh the gateway connection in the model picker (idempotent). */
 export async function ensureGatewayConnection() {
@@ -145,10 +148,9 @@ export function gatewayHome() {
 
 /** A folder QuChen can run: either its own copy or a checkout the person already had. */
 export function gatewayDir() {
-  const home = gatewayHome();
-  const candidates = [home, process.env.QUCHEN_GATEWAY_DIR, 'D:/工作区/unlimited-token', join(homedir(), '工作区', 'unlimited-token')].filter(Boolean);
-  for (const c of candidates) if (existsSync(join(c, '.venv', 'Scripts', 'litellm.exe'))) return c;
-  return home;
+  const override = process.env.QUCHEN_GATEWAY_DIR;
+  if (override && existsSync(join(override, '.venv', 'Scripts', 'litellm.exe'))) return override;
+  return gatewayHome();
 }
 
 function envFile(dir) {
