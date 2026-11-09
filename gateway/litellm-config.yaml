@@ -1,97 +1,88 @@
 # ============================================================
-#  LiteLLM 全免费网关  ——  只保留实测跑通的渠道
+#  QuChen 免费网关配置（内置）
 #  端点： http://127.0.0.1:4000/v1
 #  鉴权： Authorization: Bearer <LITELLM_MASTER_KEY>
 #
-#  所有上游分两类：
-#    [免key]  OVHcloud 匿名端点、Pollinations —— 不需要任何注册
-#    [免费]   OpenRouter :free 模型 —— 只需要一个免费账号的 key
-#
-#  已剔除：需要额外注册/充值/权限的渠道（会持续返回 401/402 噪音）
+#  只保留实测可用的渠道：
+#    · OpenRouter :free 模型 —— 需要免费账号的 key（.env 里的 OPENROUTER_KEY_1）
+#    · Pollinations        —— 完全免 key，装上就能用
+#  已剔除：OVHcloud 匿名端点（2026-11 起返回 403，需要授权）
 # ============================================================
 
 model_list:
-  # ============================================================
-  #  deepseek-v4.1-flash —— 主力组（13 个上游，全部实测可用）
-  # ============================================================
-
-  # ---------- OVHcloud 匿名端点【免 key，2 RPM/IP/模型】----------
   - model_name: deepseek-v4.1-flash
     litellm_params:
-      model: openai/Meta-Llama-3_3-70B-Instruct
-      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
-      api_key: dummy
-    model_info: { note: "OVH · Llama-3.3-70B · 免key · 0.9s" }
+      model: openai/nvidia/nemotron-3-ultra-550b-a55b:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_KEY_1
+    model_info: { note: "OpenRouter · Nemotron-3 Ultra 550B · 实测 2.7s" }
 
   - model_name: deepseek-v4.1-flash
     litellm_params:
-      model: openai/Mistral-Small-3.2-24B-Instruct-2506
-      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
-      api_key: dummy
-    model_info: { note: "OVH · Mistral-Small-24B · 免key · 0.9s" }
+      model: openai/cohere/north-mini-code:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_KEY_1
+    model_info: { note: "OpenRouter · Cohere North Mini Code · 实测 1.3s" }
 
   - model_name: deepseek-v4.1-flash
     litellm_params:
-      model: openai/gpt-oss-120b
-      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
-      api_key: dummy
-    model_info: { note: "OVH · gpt-oss-120b · 免key · 1.4s" }
+      model: openai/nvidia/nemotron-3.5-super-vl:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_KEY_1
+    model_info: { note: "OpenRouter · Nemotron-3.5 Super VL · 实测 0.9s" }
 
   - model_name: deepseek-v4.1-flash
     litellm_params:
-      model: openai/Qwen3.8-27B
-      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
-      api_key: dummy
-    model_info: { note: "OVH · Qwen3.8-27B · 免key" }
+      model: openai/recursive/flint-v1.0:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_KEY_1
+    model_info: { note: "OpenRouter · Flint v1.0 · 实测 1.6s" }
 
-  - model_name: deepseek-v4.1-flash
-    litellm_params:
-      model: openai/Qwen2.5-VL-72B-Instruct
-      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
-      api_key: dummy
-    model_info: { note: "OVH · Qwen2.5-VL-72B · 视觉 · 免key" }
-
-  # ---------- OpenRouter 免费模型（20 RPM / 50 RPD per 账号）----------
   - model_name: deepseek-v4.1-flash
     litellm_params:
       model: openai/openai-fast
       api_base: https://text.pollinations.ai/openai
       api_key: dummy
-    model_info: { note: "Pollinations · GPT-OSS 20B · 免key" }
-
-  # ============================================================
-  #  deepseek-v4.1-flash-think —— 深度推理组
-  # ============================================================
-  - model_name: deepseek-v4.1-flash-think
-    litellm_params:
-      model: openai/gpt-oss-120b
-      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
-      api_key: dummy
-    model_info: { note: "OVH · gpt-oss-120b 推理" }
+    model_info: { note: "Pollinations · 免 key · 实测 1.2s" }
 
   - model_name: deepseek-v4.1-flash-think
     litellm_params:
-      model: openai/Qwen3.5-397B-A17B
-      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
+      model: openai/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_KEY_1
+    model_info: { note: "OpenRouter · Nemotron-3 Nano 推理 · 实测 2.1s" }
+
+  - model_name: deepseek-v4.1-flash-think
+    litellm_params:
+      model: openai/google/gemma-4-31b-it:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_KEY_1
+    model_info: { note: "OpenRouter · Gemma-4 31B（可能 429）" }
+
+  - model_name: deepseek-v4.1-flash-think
+    litellm_params:
+      model: openai/openai-fast
+      api_base: https://text.pollinations.ai/openai
       api_key: dummy
-    model_info: { note: "OVH · Qwen3.5-397B-A17B 免key" }
+    model_info: { note: "Pollinations · 免 key" }
 
   - model_name: fast
     litellm_params:
-      model: openai/Meta-Llama-3_3-70B-Instruct
-      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
+      model: openai/openai-fast
+      api_base: https://text.pollinations.ai/openai
       api_key: dummy
-    model_info: { note: "OVH · Llama-70B · 免key" }
+    model_info: { note: "Pollinations · 免 key" }
 
   - model_name: fast
     litellm_params:
-      model: openai/Mistral-Small-3.2-24B-Instruct-2506
-      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
-      api_key: dummy
-    model_info: { note: "OVH · Mistral-24B · 免key" }
+      model: openai/cohere/north-mini-code:free
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_KEY_1
+    model_info: { note: "OpenRouter · Cohere North Mini Code" }
 
   - model_name: zero
     litellm_params:
-      model: openai/Meta-Llama-3_3-70B-Instruct
-      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
+      model: openai/openai-fast
+      api_base: https://text.pollinations.ai/openai
       api_key: dummy
+    model_info: { note: "Pollinations · 免 key" }
