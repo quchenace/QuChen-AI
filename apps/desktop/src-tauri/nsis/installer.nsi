@@ -728,8 +728,6 @@ SectionEnd
   RMDir /r "$LOCALAPPDATA\QuChen\procs"
   RMDir /r "$LOCALAPPDATA\QuChen\gateway"
   RMDir /r "$LOCALAPPDATA\QuChen\tools"
-  Delete "$LOCALAPPDATA\QuChen\app-settings.json"
-  Delete "$LOCALAPPDATA\QuChen\shell-prefs.json"
   RMDir /r "$APPDATA\QuChen\profiles"
   Delete "$APPDATA\QuChen\*.*"
   RMDir /r "$PROFILE\.quchen\data\native-instances"
@@ -738,6 +736,15 @@ SectionEnd
   RMDir /r "$PROFILE\.quchen\data\timeskip-fork"
   Delete "$PROFILE\.quchen\data\*.json"
   RMDir /r "$LOCALAPPDATA\QuChen\logs"
+  RMDir /r "$LOCALAPPDATA\QuChen\cache"
+  RMDir /r "$APPDATA\QuChen\Cache"
+  RMDir /r "$APPDATA\QuChen\GPUCache"
+  RMDir /r "$APPDATA\QuChen\Code Cache"
+  RMDir /r "$TEMP\quchen"
+  Delete "$TEMP\quchen-*"
+  ; The installer's own pointers and caches are rebuilt on the next start; the model folder is a separate setting.
+  DeleteRegKey HKCU "Software\QuChen"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\QuChen"
 !macroend
 ; QUCHEN-WIPE-END
 
