@@ -752,6 +752,10 @@ SectionEnd
 ; The optional QuChen VPN installs itself under the user's Programs folder. Removing or updating QuChen takes it
 ; with it, so no half-updated copy is left behind.
 !macro QuChenRemoveVpn
+  ; Close it first: a running copy cannot be replaced or removed.
+  nsExec::Exec '"$SYSDIR\taskkill.exe" /IM QuChenVPN.exe /T /F'
+  Pop $1
+  Sleep 800
   StrCpy $0 "$LOCALAPPDATA\Programs\QuChen VPN"
   IfFileExists "$0\unins000.exe" 0 +3
     nsExec::Exec '"$0\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART'

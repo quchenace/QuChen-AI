@@ -17,6 +17,19 @@ function checkedLabel(at: string) {
     return sameDay ? when.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit' }) : when.toLocaleString(localeTag(), { dateStyle: 'medium', timeStyle: 'short' });
 }
 /** Installed versions are real host values. Installation needs a host updater. */
+async function installAppUpdate(setBusy: (v: boolean) => void, setNote: (v: string) => void) {
+    setBusy(true);
+    setNote('正在下载安装包…');
+    try {
+        const r = await fetch('/api/app/update/install', { method: 'POST' });
+        const doc = await r.json().catch(() => ({} as { error?: string }));
+        if (!r.ok) throw new Error((doc as { error?: string })?.error ?? '更新没有启动。');
+        setNote('安装程序已启动，QuChen 会自动重启。');
+    } catch (e) {
+        setNote(e instanceof Error ? e.message : String(e));
+    } finally { setBusy(false); }
+}
+
 export function SettingsUpdates() {
     const native = useNative();
     const [confirm, setConfirm] = useState('');
@@ -28,6 +41,7 @@ export function SettingsUpdates() {
     const last = useLastUpdateCheck(versions);
     const [fresh, setFresh] = useState<UpdateCheckResult | null>(null);
     const [error, setError] = useState('');
+    const [installing, setInstalling] = useState(false), [installNote, setInstallNote] = useState('');
     const request = useRef<AbortController | null>(null);
     useEffect(() => () => request.current?.abort(), []);
     const active = native?.jobs.find(j => j.state === 'running');
@@ -80,6 +94,10 @@ export function SettingsUpdates() {
       {tr(versionRow('QuChen', appVersion, result?.quchen))}
       {tr(versionRow('Engine', native?.available ? (native.installed?.engine?.version ?? 'Not installed') : shownEngineVersion(native, engineVersion), result?.engine))}
       <div className="settings-update-actions"><Btn size="sm" icon="refresh" disabled={checking} className={checking ? 'settings-update-checking' : undefined} onClick={() => void check()}>{tr(checking ? 'Checking…' : error || result?.quchen.status === 'error' ? 'Try again' : result ? 'Check again' : 'Check for updates')}</Btn></div>
+      <div className="settings-update-actions">
+        <Btn size="sm" variant="primary" icon="download" disabled={installing} onClick={() => void installAppUpdate(setInstalling, setInstallNote)}>{tr(installing ? '正在下载…' : '下载并安装更新')}</Btn>
+        {installNote ? <span className="small muted">{installNote}</span> : null}
+      </div>
       <div className="settings-update-inline" role="status" aria-live="polite">{tr(checking ? 'Checking for new versions…' : error ? <span className="inline-error">{tr(error)}</span> : result ? <><span className="sr-only">{tr(result.quchen.message)} {tr(result.engine.message)} </span>{tr("Checked at ")}{tr(checkedLabel(result.checkedAt))}</> : null)}</div>
     </div>
     {tr(active ? <NativeProgress job={active}/> : null)}{tr(native?.jobs.filter(j => j.state === 'error' && ['update-quchen', 'update-engine'].includes(j.kind)).slice(-1).map(j => <p role="alert" key={j.id} className="small inline-error">{tr(jobErrorText(j, native.jobs))}</p>))}

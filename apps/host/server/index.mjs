@@ -1681,6 +1681,15 @@ async function api(req, res, path, method, url) {
     if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
     return json(res, 200, integrations.setAutoSync(!!body?.on, body?.withGateway !== false));
   }
+  // --- the app updates itself: download the published installer, check it, run it -----------------
+  if (path === '/api/app/update/install' && method === 'POST') {
+    try {
+      const { installAppUpdate } = await import('./app-update.mjs');
+      return json(res, 200, await installAppUpdate());
+    } catch (e) {
+      return error(res, 400, e.message ?? 'The update could not be started.');
+    }
+  }
   if (path === '/api/integrations/vpn' && method === 'GET') return json(res, 200, await integrations.vpnStatus());
   if (path === '/api/integrations/vpn' && method === 'POST') {
     const body = await readBody(req);

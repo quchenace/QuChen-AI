@@ -432,7 +432,7 @@ export function ChatScreen() {
         return () => window.removeEventListener('keydown', onKey);
     }, [focusMode]);
     const chatNative = useNative(), queuedPhotos = useChatPhotos(session?.id);
-    const readyForChat = !!loaded || !!chatNative?.instances.some(i => i.status === 'ready');
+    const readyForChat = !!loaded || !!remote || !!chatNative?.instances.some(i => i.status === 'ready');
     useEffect(() => {
         if (setupVisible || !readyForChat || messageCount)
             return;
@@ -488,7 +488,7 @@ export function ChatScreen() {
               <UsageDashboard loaded={!!loaded}/>
             </div>
           </div>
-          <Composer draft={draft} setDraft={updateDraft} loaded={!!loaded} streaming={streaming} onSubmit={submit} onKey={onComposerKey} session={session} onPreview={openPreview} textareaRef={textarea}/>
+          <Composer draft={draft} setDraft={updateDraft} loaded={!!loaded || !!remote} streaming={streaming} onSubmit={submit} onKey={onComposerKey} session={session} onPreview={openPreview} textareaRef={textarea}/>
          </DropZone>
         <ArtifactPanel items={previews} onCloseTab={closeTab} selected={setupVisible ? null : selectedPreview} onSelect={selectPreview} onClose={() => setSelectedPreview(null)} inline={inlinePreview}/>
          {tr(resizeHandle)}
@@ -533,7 +533,7 @@ export function ChatScreen() {
           </div>
           <div className="jumplatest-row">{tr(awayFromBottom ? (<button type="button" className="jumplatest" data-finished={justFinished || undefined} aria-label={tr("Scroll to the latest message")} title={tr("Scroll to the latest message")} onClick={() => scrollToLatest()}>
                 <Icon name="chevron" size={18}/></button>) : null)}</div>
-          <Composer draft={draft} setDraft={updateDraft} loaded={!!loaded} streaming={streaming} onSubmit={submit} onKey={onComposerKey} session={session} onPreview={openPreview} textareaRef={textarea}/>
+          <Composer draft={draft} setDraft={updateDraft} loaded={!!loaded || !!remote} streaming={streaming} onSubmit={submit} onKey={onComposerKey} session={session} onPreview={openPreview} textareaRef={textarea}/>
         </DropZone>
         {tr(!setupVisible && selectedRun && session ? <TimeSkipPanel key={selectedRun.id} run={selectedRun} sessionId={session.id} inline={inlinePreview} expanded={expanded} onCompare={setExpanded} onPreview={openPreview} onClose={() => { setSelectedPreview(null); setExpanded(false); }}/> : null)}
         {tr(!setupVisible && planShown ? <PlanPanel chatId={session?.id}/> : null)}
