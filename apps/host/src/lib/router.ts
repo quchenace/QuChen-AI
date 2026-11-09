@@ -8,6 +8,7 @@ export const ROUTES = [
   'tuning',
   'serving',
   'monitor',
+  'gateway',
   'tasks',
   'skills',
   'settings',

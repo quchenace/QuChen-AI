@@ -13,7 +13,9 @@ import { nativeAction, useNative } from '../lib/native';
 /** The loaded model is shared by all chats; switching uses the existing lifecycle gates. */
 export function ChatModelPicker() {
     const native = useNative(), remote = useStore(s => s.remoteModel);
-    return native?.instances.length && !remote ? <NativeChatModelPicker /> : <LegacyChatModelPicker />;
+    const providers = useStore(st => st.providers);
+    const hasApi = !!providers?.connections.some(c => c.models.length);
+    return ((native?.instances.length ?? 0) > 0 || hasApi) && !remote ? <NativeChatModelPicker /> : <LegacyChatModelPicker />;
 }
 function NativeChatModelPicker() {
     const native = useNative(), providers = useStore(s => s.providers), streaming = useStore(s => s.streaming);

@@ -718,6 +718,49 @@ SectionEnd
 !macroend
 ; QUCHEN-STOP-END
 
+; QUCHEN-WIPE-BEGIN
+; A clean replacement: the old copies of the runtime, the engine components, the gateway and the profiles go too,
+; so repeated updates cannot leave anything behind. The model folder is never touched (it is a separate setting,
+; usually under Documents), and neither is anything outside QuChen's own folders.
+!macro QuChenWipeData
+  RMDir /r "$LOCALAPPDATA\QuChen\install"
+  RMDir /r "$LOCALAPPDATA\QuChen\runtime"
+  RMDir /r "$LOCALAPPDATA\QuChen\procs"
+  RMDir /r "$LOCALAPPDATA\QuChen\gateway"
+  RMDir /r "$LOCALAPPDATA\QuChen\tools"
+  Delete "$LOCALAPPDATA\QuChen\app-settings.json"
+  Delete "$LOCALAPPDATA\QuChen\shell-prefs.json"
+  RMDir /r "$APPDATA\QuChen\profiles"
+  Delete "$APPDATA\QuChen\*.*"
+  RMDir /r "$PROFILE\.quchen\data\native-instances"
+  RMDir /r "$PROFILE\.quchen\data\agent"
+  RMDir /r "$PROFILE\.quchen\data\native-tune"
+  RMDir /r "$PROFILE\.quchen\data\timeskip-fork"
+  Delete "$PROFILE\.quchen\data\*.json"
+  RMDir /r "$LOCALAPPDATA\QuChen\logs"
+!macroend
+; QUCHEN-WIPE-END
+
+; QUCHEN-VPN-BEGIN
+; The optional QuChen VPN installs itself under the user's Programs folder. Removing or updating QuChen takes it
+; with it, so no half-updated copy is left behind.
+!macro QuChenRemoveVpn
+  StrCpy $0 "$LOCALAPPDATA\Programs\QuChen VPN"
+  IfFileExists "$0\unins000.exe" 0 +3
+    nsExec::Exec '"$0\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
+    Pop $1
+  Sleep 600
+  RMDir /r "$0"
+  StrCpy $0 "$PROGRAMFILES64\QuChen VPN"
+  IfFileExists "$0\unins000.exe" 0 +3
+    nsExec::Exec '"$0\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
+    Pop $1
+  Sleep 600
+  RMDir /r "$0"
+  RMDir /r "$LOCALAPPDATA\QuChen\tools\QuChenVPN"
+!macroend
+; QUCHEN-VPN-END
+
 ; QUCHEN-CLEAN-BEGIN
 ; The app writes into its own folders while it runs (Python bytecode caches under control\, for one), and the file-by-file delete below does not know them,
 ; so those folders stayed behind with a few dozen files. These four folders hold only what the installer put there and what the app made there;
@@ -740,6 +783,8 @@ Section Install
   !insertmacro QuChenStopOwnProcesses "$INSTDIR"
   Delete "$INSTDIR\${MAINBINARYNAME}.exe"
   !insertmacro QuChenRemoveAppFolders "$INSTDIR"
+  !insertmacro QuChenRemoveVpn
+  !insertmacro QuChenWipeData
   Delete "$INSTDIR\*.dll"
   Delete "$INSTDIR\*.exe"
   Delete "$INSTDIR\*.pak"
@@ -892,6 +937,8 @@ Section Uninstall
   !endif
 
   !insertmacro QuChenStopOwnProcesses "$INSTDIR"
+  ; The optional QuChen VPN goes with it.
+  !insertmacro QuChenRemoveVpn
   !insertmacro CheckIfAppIsRunning "$INSTDIR\${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
 
   ; Delete the app directory and its content from disk

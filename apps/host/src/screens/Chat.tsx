@@ -468,7 +468,7 @@ export function ChatScreen() {
         }
         if (timeSkip === null) {
             // No model to answer: say so plainly (or show the download), and do not start a run.
-            const why = noModelNotice(chatNative ?? null, { libraryLoaded: !!loaded });
+            const why = noModelNotice(chatNative ?? null, { remote: !!remote, libraryLoaded: !!loaded });
             if (why) { pushToast('info', tr(why.title), tr(why.message)); return; }
         }
         updateDraft('');
