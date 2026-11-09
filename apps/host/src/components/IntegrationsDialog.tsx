@@ -10,7 +10,8 @@ type Harness = {
     autoSync: boolean; lastSync: string | null;
 };
 type Gateway = { dir: string; port: number; running: boolean; present: boolean; models: string[]; pid: number | null; log: string };
-type Status = { harness: Harness; gateway: Gateway };
+type Vpn = { dir: string; installed: boolean; exe: string | null; running: boolean };
+type Status = { harness: Harness; gateway: Gateway; vpn: Vpn };
 
 function Dot({ on }: { on: boolean }) {
     return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 999, background: on ? '#22c55e' : '#9ca3af', marginRight: 6 }}/>;
@@ -66,7 +67,7 @@ export function IntegrationsDialog({ open, onClose, paused, onPaused }: {
         } finally { setPending(''); }
     }
 
-    const h = status?.harness, g = status?.gateway;
+    const h = status?.harness, g = status?.gateway, v = status?.vpn;
     const ready = unlocked || passcode.trim().length > 0;
 
     return <Dialog open={open} onClose={onClose} title={tr('外部接入')} wide actions={<Btn onClick={onClose}>{tr('Close')}</Btn>}>
@@ -135,6 +136,24 @@ export function IntegrationsDialog({ open, onClose, paused, onPaused }: {
                         {paused ? tr('恢复') : tr('暂停')}
                     </Btn>
                 </div>
+            </section>
+
+
+            <section className="st-card">
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                        <strong><Dot on={!!v?.running}/>{tr('网络工具（可选）')}</strong>
+                        <span className="small muted"> QuChen VPN</span>
+                    </div>
+                    <div className="row">
+                        {!v?.installed
+                            ? <Btn size="sm" icon="download" disabled={!ready || pending !== ''} onClick={() => void call('vpn', '/api/integrations/vpn', { action: 'install' }, tr('装好了，点「启动」即可。'))}>{pending === 'vpn' ? tr('下载中…') : tr('下载安装')}</Btn>
+                            : v.running
+                                ? <Btn size="sm" variant="ghost" disabled={!ready || pending !== ''} onClick={() => void call('vpn', '/api/integrations/vpn', { action: 'stop' }, tr('已停止。'))}>{tr('停止')}</Btn>
+                                : <Btn size="sm" icon="bolt" disabled={!ready || pending !== ''} onClick={() => void call('vpn', '/api/integrations/vpn', { action: 'start' }, tr('已启动，看托盘图标。'))}>{tr('启动')}</Btn>}
+                    </div>
+                </div>
+                <p className="small muted" style={{ margin: '6px 0 0' }}>{tr('只有需要访问 GitHub 时才用；不装也不影响聊天和网关。')}</p>
             </section>
 
             {note ? <p className="small">{note}</p> : null}

@@ -268,6 +268,70 @@ export async function gatewayAction(action, dir) {
   return gatewayStatus();
 }
 
+
+/* ------------------------------------------------------------------ vpn --- */
+// The owner's own network tool (QuChen-VPN, mihomo based). Optional: QuChen only downloads it, starts it
+// and stops it; nothing here talks to a proxy itself.
+
+const VPN_REPO = 'quchenace/QuChen-VPN';
+
+export function vpnHome() {
+  return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'QuChen', 'tools', 'QuChenVPN');
+}
+
+function vpnExe(dir) {
+  try {
+    const hit = readdirSync(dir).find((f) => /\.exe$/i.test(f));
+    return hit ? join(dir, hit) : null;
+  } catch { return null; }
+}
+
+function vpnRunning() {
+  return new Promise((resolve) => execFile('tasklist.exe', ['/FI', 'IMAGENAME eq QuChenVPN.exe', '/NH'], { windowsHide: true },
+    (e, out) => resolve(/QuChenVPN\.exe/i.test(out ?? ''))));
+}
+
+export async function vpnStatus() {
+  const dir = vpnHome();
+  const exe = vpnExe(dir);
+  return { dir, installed: !!exe, exe, running: await vpnRunning() };
+}
+
+export async function vpnInstall() {
+  const rel = await (await fetch('https://api.github.com/repos/' + VPN_REPO + '/releases/latest', {
+    headers: { accept: 'application/vnd.github+json', 'user-agent': 'quchen' }, signal: AbortSignal.timeout(20000),
+  })).json();
+  const asset = (rel.assets ?? []).find((a) => /\.(zip|exe)$/i.test(a.name));
+  if (!asset) throw new Error('作者还没有发布安装包（Release 里没有 zip 或 exe）。');
+  const dir = vpnHome();
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, asset.name);
+  const res = await fetch(asset.browser_download_url, { signal: AbortSignal.timeout(900000) });
+  if (!res.ok) throw new Error('下载失败（HTTP ' + res.status + '）。');
+  writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+  if (/\.zip$/i.test(asset.name)) {
+    await new Promise((resolve, reject) => execFile('powershell.exe',
+      ['-NoProfile', '-Command', "Expand-Archive -LiteralPath '" + file + "' -DestinationPath '" + dir + "' -Force"],
+      { windowsHide: true }, (e) => (e ? reject(new Error('解压失败：' + e.message)) : resolve(null))));
+    try { rmSync(file, { force: true }); } catch { /* stays */ }
+  }
+  return vpnStatus();
+}
+
+export async function vpnStart() {
+  const { exe } = await vpnStatus();
+  if (!exe) throw new Error('先安装 QuChen VPN。');
+  spawn(exe, [], { cwd: vpnHome(), detached: true, stdio: 'ignore' }).unref();
+  await sleep(800);
+  return vpnStatus();
+}
+
+export async function vpnStop() {
+  await new Promise((resolve) => execFile('taskkill.exe', ['/IM', 'QuChenVPN.exe', '/T', '/F'], { windowsHide: true }, () => resolve(null)));
+  await sleep(600);
+  return vpnStatus();
+}
+
 /* ---------------------------------------------------------------- writing --- */
 
 function localName(id) {

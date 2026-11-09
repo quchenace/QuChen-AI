@@ -1663,7 +1663,7 @@ async function api(req, res, path, method, url) {
   if (cancelMatch && method === 'POST') return json(res, 200, serving.cancel(cancelMatch[1]));
   // --- integrations: the harness profile, the free gateway, pausing the model -----------
   if (path === '/api/integrations' && method === 'GET') {
-    return json(res, 200, { harness: await integrations.harnessStatus(), gateway: await integrations.gatewayStatus() });
+    return json(res, 200, { harness: await integrations.harnessStatus(), gateway: await integrations.gatewayStatus(), vpn: await integrations.vpnStatus() });
   }
   if (path === '/api/integrations/harness' && method === 'POST') {
     const body = await readBody(req);
@@ -1679,6 +1679,14 @@ async function api(req, res, path, method, url) {
     const body = await readBody(req);
     if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
     return json(res, 200, integrations.setAutoSync(!!body?.on, body?.withGateway !== false));
+  }
+  if (path === '/api/integrations/vpn' && method === 'GET') return json(res, 200, await integrations.vpnStatus());
+  if (path === '/api/integrations/vpn' && method === 'POST') {
+    const body = await readBody(req);
+    if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
+    if (body?.action === 'install') return json(res, 200, await integrations.vpnInstall());
+    if (body?.action === 'stop') return json(res, 200, await integrations.vpnStop());
+    return json(res, 200, await integrations.vpnStart());
   }
   if (path === '/api/integrations/pause' && method === 'POST') {
     const body = await readBody(req);
