@@ -9,6 +9,7 @@ import { saveSnapshot } from './snapshot.mjs';
 import { resolvePython, shellPrefix } from './python-resolver.mjs';
 import { chooseFolder, chooserUnavailable, typedFolder } from './folder-dialog.mjs';
 import { createLocalShare } from './local-share.mjs';
+import * as integrations from './integrations.mjs';
 import { createTaskService, validateTask } from './tasks.mjs';
 import { createAgentTaskRunner } from './agent/task-run.mjs';
 import { migrateSetup } from './setup.mjs';
@@ -1660,6 +1661,26 @@ async function api(req, res, path, method, url) {
   }
   const cancelMatch = /^\/api\/serving\/requests\/([^/]+)\/cancel$/.exec(path);
   if (cancelMatch && method === 'POST') return json(res, 200, serving.cancel(cancelMatch[1]));
+  // --- integrations: the harness profile, the free gateway, pausing the model -----------
+  if (path === '/api/integrations' && method === 'GET') {
+    return json(res, 200, { harness: await integrations.harnessStatus(), gateway: await integrations.gatewayStatus() });
+  }
+  if (path === '/api/integrations/harness' && method === 'POST') {
+    const body = await readBody(req);
+    if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
+    return json(res, 200, await integrations.syncHarness({ withGateway: body?.withGateway !== false }));
+  }
+  if (path === '/api/integrations/gateway' && method === 'POST') {
+    const body = await readBody(req);
+    if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
+    if (body?.dir) integrations.setGatewayDir(body.dir);
+    return json(res, 200, await integrations.gatewayAction(body?.action === 'stop' ? 'stop' : 'start'));
+  }
+  if (path === '/api/integrations/pause' && method === 'POST') {
+    const body = await readBody(req);
+    if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
+    return json(res, 200, serving.patch({ pauseServing: !!body?.paused }));
+  }
 
   // --- monitor ------------------------------------------------------------
   if (path === '/api/monitor') { monitor.watch(); if (url.searchParams.get('drives') === '1') monitor.watchDrives(); return json(res, 200, monitor.snapshot()); }
