@@ -85,19 +85,23 @@ export function IntegrationsDialog({ open, onClose, paused, onPaused }: {
                         <span className="small muted"> 127.0.0.1:{g?.port ?? 4000}</span>
                     </div>
                     <div className="row">
-                        {g?.running
-                            ? <Btn size="sm" variant="ghost" disabled={pending !== '' || !ready} onClick={() => void call('gw', '/api/integrations/gateway', { action: 'stop' }, tr('网关已停止。'))}>{tr('停止')}</Btn>
-                            : <Btn size="sm" icon="bolt" disabled={pending !== '' || !ready} onClick={() => void call('gw', '/api/integrations/gateway', { action: 'start' }, tr('网关已启动（几秒后就绪）。'))}>{tr('启动')}</Btn>}
+                        {!g?.present
+                            ? <Btn size="sm" icon="download" disabled={!ready || pending !== ''} onClick={() => void call('gw', '/api/integrations/gateway', { action: 'install' }, tr('免费网关装好了，点「启动」就能用。'))}>{pending === 'gw' ? tr('安装中…') : tr('安装')}</Btn>
+                            : g.running
+                                ? <Btn size="sm" variant="ghost" disabled={!ready || pending !== ''} onClick={() => void call('gw', '/api/integrations/gateway', { action: 'stop' }, tr('网关已停止。'))}>{tr('停止')}</Btn>
+                                : <Btn size="sm" icon="bolt" disabled={!ready || pending !== ''} onClick={() => void call('gw', '/api/integrations/gateway', { action: 'start' }, tr('网关已启动（几秒后就绪）。'))}>{tr('启动')}</Btn>}
                     </div>
                 </div>
-                <p className="small muted" style={{ margin: '6px 0' }}>{g?.dir}</p>
-                {g ? <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                {!g?.present
+                    ? <p className="small muted" style={{ margin: '6px 0 0' }}>{tr('第一次用需要装一次（约 200 MB，装到 QuChen 自己的目录），以后直接启动。')}</p>
+                    : <p className="small muted" style={{ margin: '6px 0' }}>{g.dir}</p>}
+                {g && g.present && g.models.length ? <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
                     {g.models.map((m) => <span key={m} className="small" style={{ border: '1px solid var(--line, #e5e7eb)', borderRadius: 999, padding: '1px 8px' }}>{m}</span>)}
                 </div> : null}
-                <details style={{ marginTop: 8 }} open={showLog} onToggle={(e) => setShowLog((e.target as HTMLDetailsElement).open)}>
+                {g?.present ? <details style={{ marginTop: 8 }} open={showLog} onToggle={(e) => setShowLog((e.target as HTMLDetailsElement).open)}>
                     <summary className="small">{tr('日志')}</summary>
                     <pre className="small muted" style={{ maxHeight: 160, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{g?.log || '—'}</pre>
-                </details>
+                </details> : null}
             </section>
 
             <section className="st-card">

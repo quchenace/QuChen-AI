@@ -11,7 +11,7 @@
  *
  * Every write is behind a passcode.
  */
-import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { execFile, spawn } from 'node:child_process';
@@ -37,6 +37,12 @@ const MAX_TOKENS = 8192;
 const MAX_MODELS = 40;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** The gateway we started, so closing QuChen closes it too. */
+let gatewayChild = null;
+export function stopGatewayWithHost() {
+  try { if (gatewayChild && !gatewayChild.killed) gatewayChild.kill(); } catch { /* already gone */ }
+}
 
 function readSettings() {
   try { return JSON.parse(readFileSync(settingsFile(), 'utf8')); } catch { return {}; }
@@ -103,11 +109,16 @@ async function listModels(baseUrl, key) {
 
 /* --------------------------------------------------------------- gateway --- */
 
+export function gatewayHome() {
+  return readSettings().gatewayDir || join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'QuChen', 'gateway');
+}
+
+/** A folder QuChen can run: either its own copy or a checkout the person already had. */
 export function gatewayDir() {
-  const configured = readSettings().gatewayDir;
-  const candidates = [configured, process.env.QUCHEN_GATEWAY_DIR, 'D:/工作区/unlimited-token', join(homedir(), '工作区', 'unlimited-token')].filter(Boolean);
+  const home = gatewayHome();
+  const candidates = [home, process.env.QUCHEN_GATEWAY_DIR, 'D:/工作区/unlimited-token', join(homedir(), '工作区', 'unlimited-token')].filter(Boolean);
   for (const c of candidates) if (existsSync(join(c, '.venv', 'Scripts', 'litellm.exe'))) return c;
-  return configured || candidates[0];
+  return home;
 }
 
 function envFile(dir) {
@@ -146,12 +157,31 @@ export async function gatewayStatus() {
   const running = await portOpen(GATEWAY_PORT, 700);
   const models = running ? await listModels('http://127.0.0.1:' + GATEWAY_PORT + '/v1', gatewayKey()) : [];
   return {
-    dir, port: GATEWAY_PORT, running,
+    dir, port: GATEWAY_PORT, running, home: gatewayHome(),
     present: existsSync(join(dir, '.venv', 'Scripts', 'litellm.exe')),
     models: models.length ? models : configuredGatewayModels(),
     pid: readSettings().gatewayPid ?? null,
     log: logTail(),
   };
+}
+
+/** The gateway QuChen ships as a release asset: one download, unpacked once, then reused. */
+const GATEWAY_ZIP = 'https://github.com/quchenace/QuChen-AI/releases/latest/download/quchen-gateway.zip';
+
+export async function gatewayInstall({ url } = {}) {
+  const home = gatewayHome();
+  mkdirSync(home, { recursive: true });
+  const zip = join(home, 'gateway.zip');
+  const source = url || readSettings().gatewayZip || GATEWAY_ZIP;
+  const res = await fetch(source, { signal: AbortSignal.timeout(900000) });
+  if (!res.ok) throw new Error('下载免费网关失败（HTTP ' + res.status + '）。');
+  writeFileSync(zip, Buffer.from(await res.arrayBuffer()));
+  await new Promise((resolve, reject) => execFile('powershell.exe',
+    ['-NoProfile', '-Command', "Expand-Archive -LiteralPath '" + zip + "' -DestinationPath '" + home + "' -Force"],
+    { windowsHide: true }, (e) => (e ? reject(new Error('解压失败：' + e.message)) : resolve(null))));
+  try { rmSync(zip, { force: true }); } catch { /* left for the next try */ }
+  writeSettings({ gatewayDir: home, gatewayInstalled: new Date().toISOString() });
+  return gatewayStatus();
 }
 
 export async function gatewayStart() {
@@ -163,8 +193,8 @@ export async function gatewayStart() {
   const fd = openSync(gatewayLog(), 'a');
   const env = { ...process.env, ...envFile(dir), PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', LITELLM_LOCAL_MODEL_COST_MAP: 'True' };
   const child = spawn(exe, ['--config', join(dir, 'litellm-config.yaml'), '--port', String(GATEWAY_PORT), '--host', '127.0.0.1'],
-    { cwd: dir, env, stdio: ['ignore', fd, fd], windowsHide: true, detached: true });
-  child.unref();
+    { cwd: dir, env, stdio: ['ignore', fd, fd], windowsHide: true });
+  gatewayChild = child;
   writeSettings({ gatewayPid: child.pid });
   for (let i = 0; i < 30; i++) { await sleep(700); if (await portOpen(GATEWAY_PORT)) break; }
   return gatewayStatus();
@@ -183,6 +213,7 @@ export async function gatewayStop() {
 
 export async function gatewayAction(action, dir) {
   if (dir) writeSettings({ gatewayDir: dir });
+  if (action === 'install') return gatewayInstall({ url: dir });
   if (action === 'start') return gatewayStart();
   if (action === 'stop') return gatewayStop();
   return gatewayStatus();
