@@ -10,7 +10,7 @@ type Harness = {
     autoSync: boolean; lastSync: string | null;
 };
 type Gateway = { dir: string; port: number; running: boolean; present: boolean; models: string[]; pid: number | null; log: string };
-type Vpn = { dir: string; installed: boolean; exe: string | null; running: boolean };
+type Vpn = { dir: string; installed: boolean; exe: string | null; running: boolean; progress: { phase: string; done: number; total: number; message: string } };
 type Status = { harness: Harness; gateway: Gateway; vpn: Vpn };
 
 function Dot({ on }: { on: boolean }) {
@@ -163,7 +163,16 @@ export function IntegrationsPanel() {
                             : <><Btn size="sm" variant="ghost" disabled={!ready || pending !== ''} onClick={() => file.current?.click()}>{tr('从本地文件…')}</Btn><Btn size="sm" icon="bolt" disabled={!ready || pending !== ''} onClick={() => void call('vpn', '/api/integrations/vpn', { action: 'start' }, tr('已启动，看托盘图标。'))}>{tr('启动')}</Btn></>}
                 </div>
             </div>
-            <p className="small muted" style={{ margin: '6px 0 0' }}>{tr('只有需要访问 GitHub 时才用；不装也不影响聊天和网关。下载失败时，可以用「从本地文件…」选一个 QuChenVPN 压缩包。')}</p>
+            {v?.progress && ['resolving', 'downloading', 'installing', 'unpacking'].includes(v.progress.phase)
+                ? <div style={{ margin: '8px 0 0' }}>
+                    <div style={{ height: 6, background: 'var(--line, #e5e7eb)', borderRadius: 999, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: (v.progress.total ? Math.min(100, Math.round(v.progress.done / v.progress.total * 100)) : 5) + '%', background: '#22c55e', transition: 'width .3s' }}/>
+                    </div>
+                    <p className="small muted" style={{ margin: '4px 0 0' }}>{v.progress.message}{v.progress.total ? ` · ${Math.round(v.progress.done / 1048576)} / ${Math.round(v.progress.total / 1048576)} MB` : ''}</p>
+                  </div>
+                : null}
+            {v?.progress?.phase === 'error' ? <p className="small inline-error">{v.progress.message}</p> : null}
+            <p className="small muted" style={{ margin: '6px 0 0' }}>{tr('只有需要访问 GitHub 时才用；不装也不影响聊天和网关。下载失败时，可以用「从本地文件…」选一个 QuChenVPN 安装包。')}</p>
             <input ref={file} type="file" accept=".zip,.exe" hidden onChange={(e) => { const picked = e.target.files?.[0]; if (!picked) return; void upload(picked); e.target.value = ''; }}/>
         </section>
 

@@ -289,12 +289,24 @@ export function vpnHome() {
   return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'QuChen', 'tools', 'QuChenVPN');
 }
 
-function vpnExe(dir) {
-  try {
-    const hit = readdirSync(dir).find((f) => /\.exe$/i.test(f));
-    return hit ? join(dir, hit) : null;
-  } catch { return null; }
+/** Where the app can be: the folder a zip was unpacked into, or the per-user / machine install the setup made. */
+function vpnDirs() {
+  const local = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local');
+  return [vpnHome(), join(local, 'Programs', 'QuChen VPN'), join(process.env.ProgramFiles || 'C:/Program Files', 'QuChen VPN')];
 }
+
+function vpnExe() {
+  for (const dir of vpnDirs()) {
+    try {
+      const hit = readdirSync(dir).find((f) => /^QuChenVPN.*\.exe$/i.test(f));
+      if (hit) return join(dir, hit);
+    } catch { /* next */ }
+  }
+  return null;
+}
+
+/** Live progress of the download/install, read by the panel. */
+let vpnProgress = { phase: 'idle', done: 0, total: 0, message: '' };
 
 function vpnRunning() {
   return new Promise((resolve) => execFile('tasklist.exe', ['/FI', 'IMAGENAME eq QuChenVPN.exe', '/NH'], { windowsHide: true },
@@ -302,36 +314,65 @@ function vpnRunning() {
 }
 
 export async function vpnStatus() {
-  const dir = vpnHome();
-  const exe = vpnExe(dir);
-  return { dir, installed: !!exe, exe, running: await vpnRunning() };
+  const exe = vpnExe();
+  return { dir: exe ? join(exe, '..') : vpnHome(), installed: !!exe, exe, running: await vpnRunning(), progress: vpnProgress };
 }
 
 export async function vpnInstall() {
-  const rel = await (await fetch('https://api.github.com/repos/' + VPN_REPO + '/releases/latest', {
-    headers: { accept: 'application/vnd.github+json', 'user-agent': 'quchen' }, signal: AbortSignal.timeout(20000),
-  })).json();
-  const asset = (rel.assets ?? []).find((a) => /\.(zip|exe)$/i.test(a.name));
-  if (!asset) throw new Error('作者还没有发布安装包（Release 里没有 zip 或 exe）。');
-  const dir = vpnHome();
-  mkdirSync(dir, { recursive: true });
-  const file = join(dir, asset.name);
-  let bytes;
+  vpnProgress = { phase: 'resolving', done: 0, total: 0, message: '正在查询最新版本…' };
   try {
-    const res = await fetch(asset.browser_download_url, { signal: AbortSignal.timeout(900000) });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    bytes = Buffer.from(await res.arrayBuffer());
+    const rel = await (await fetch('https://api.github.com/repos/' + VPN_REPO + '/releases/latest', {
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'quchen' }, signal: AbortSignal.timeout(20000),
+    })).json();
+    const assets = rel.assets ?? [];
+    const setup = assets.find((a) => /setup\.exe$/i.test(a.name));
+    const zip = assets.find((a) => /\.zip$/i.test(a.name));
+    const asset = setup ?? zip;
+    if (!asset) throw new Error('作者还没有发布安装包（Release 里没有 Setup.exe 或 zip）。');
+
+    vpnProgress = { phase: 'downloading', done: 0, total: asset.size ?? 0, message: '正在下载 ' + asset.name + '…' };
+    const dir = vpnHome();
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, asset.name);
+    let res;
+    try {
+      res = await fetch(asset.browser_download_url, { signal: AbortSignal.timeout(1800000) });
+    } catch (e) {
+      throw new Error('下载失败：这台电脑到不了 GitHub 的下载服务器（' + (e && e.message ? e.message : 'network') + '）。用「从本地文件…」选一个 QuChenVPN 安装包即可。');
+    }
+    if (!res.ok) throw new Error('下载失败（HTTP ' + res.status + '）。');
+    const total = Number(res.headers.get('content-length') ?? asset.size ?? 0);
+    const chunks = [];
+    let done = 0;
+    for await (const chunk of res.body) {
+      chunks.push(chunk);
+      done += chunk.length;
+      vpnProgress = { phase: 'downloading', done, total, message: '正在下载 ' + asset.name + '…' };
+    }
+    writeFileSync(file, Buffer.concat(chunks));
+
+    if (setup) {
+      vpnProgress = { phase: 'installing', done, total, message: '正在安装…' };
+      await new Promise((resolve, reject) => {
+        const child = spawn(file, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOCANCEL', '/MERGETASKS=!desktopicon'], { windowsHide: true });
+        child.on('error', reject);
+        child.on('exit', (code) => (code === 0 ? resolve(null) : reject(new Error('安装程序返回 ' + code))));
+      });
+      try { rmSync(file, { force: true }); } catch { /* stays */ }
+      await sleep(1200);
+    } else {
+      vpnProgress = { phase: 'unpacking', done, total, message: '正在解压…' };
+      await new Promise((resolve, reject) => execFile('powershell.exe',
+        ['-NoProfile', '-Command', "Expand-Archive -LiteralPath '" + file + "' -DestinationPath '" + dir + "' -Force"],
+        { windowsHide: true }, (e) => (e ? reject(new Error('解压失败：' + e.message)) : resolve(null))));
+      try { rmSync(file, { force: true }); } catch { /* stays */ }
+    }
+    vpnProgress = { phase: 'done', done, total, message: '安装完成' };
+    return vpnStatus();
   } catch (e) {
-    throw new Error('下载失败：这台电脑到不了 GitHub 的下载服务器（' + (e && e.message ? e.message : 'network') + '）。用「从本地文件…」选一个 QuChenVPN 压缩包即可。');
+    vpnProgress = { ...vpnProgress, phase: 'error', message: e.message };
+    throw e;
   }
-  writeFileSync(file, bytes);
-  if (/\.zip$/i.test(asset.name)) {
-    await new Promise((resolve, reject) => execFile('powershell.exe',
-      ['-NoProfile', '-Command', "Expand-Archive -LiteralPath '" + file + "' -DestinationPath '" + dir + "' -Force"],
-      { windowsHide: true }, (e) => (e ? reject(new Error('解压失败：' + e.message)) : resolve(null))));
-    try { rmSync(file, { force: true }); } catch { /* stays */ }
-  }
-  return vpnStatus();
 }
 
 /** Install from a zip/exe the person already has (the network may not reach GitHub). */
