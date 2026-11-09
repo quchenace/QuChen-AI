@@ -23,7 +23,12 @@ export async function installAppUpdate() {
   const file = join(dir, entry.url.split('/').pop() || 'QuChen-setup.exe');
   try { rmSync(file, { force: true }); } catch { /* none */ }
 
-  const res = await fetch(entry.url, { signal: AbortSignal.timeout(30 * 60 * 1000) });
+  let res;
+  try {
+    res = await fetch(entry.url, { signal: AbortSignal.timeout(30 * 60 * 1000) });
+  } catch (e) {
+    throw new Error('安装包下载失败：这台电脑连不上 github.com。先打开 QuChen VPN（网关页 → 网络工具）再试，或用离线安装包。');
+  }
   if (!res.ok || !res.body) throw new Error('The installer could not be downloaded (' + res.status + ').');
   const hash = createHash('sha256');
   const sink = createWriteStream(file);

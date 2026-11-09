@@ -87,6 +87,21 @@ export async function checkComponentUpdates({ control, appUpdater = null, appVer
       else appCheckFailed = String(error?.message ?? error ?? 'The app update check failed.');   // the app's own check did not work: say so, raw text behind Details
     }
   }
+  // The window's own check reads github.com, which some networks cannot reach. api.github.com usually is reachable,
+  // so ask it as well and keep the higher of the two verdicts.
+  let apiAppVersion = null;
+  try {
+    const list = await (await fetch(RELEASES, { headers: { accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(10000) })).json();
+    const parts = v => { const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(v ?? ''); return m ? m.slice(1).map(Number) : null; };
+    const candidates = (Array.isArray(list) ? list : []).filter(r => !r.draft && !r.prerelease && parts(r.tag_name));
+    candidates.sort((a, b) => { const x = parts(b.tag_name), y = parts(a.tag_name); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]; return 0; });
+    const newest = candidates[0]?.tag_name ?? null;
+    const mine = parts(appVersion);
+    if (newest && mine && parts(newest).join('.') !== mine.join('.')) {
+      const cmp = parts(newest).reduce((acc, n, i) => acc || (n - mine[i]), 0) > 0;
+      if (cmp) { apiAppVersion = newest; appNew = newest; appCheckFailed = null; }
+    } else if (newest) { appNew = null; }
+  } catch { /* the window's own verdict stands */ }
   const controlNew = control_.status === 'available' ? control_.offered : null;
   const quchen = { installedVersion: appVersion ?? control_.installed ?? control.version ?? null, canInstall: !!((appNew && !appCannot) || controlNew) };
   const appCheckLine = "QuChen couldn't check for a new version of the app itself. Try again later.";
