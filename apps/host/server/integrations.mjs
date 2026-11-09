@@ -21,8 +21,9 @@ import { DEFAULT_OPENROUTER_KEY } from './default-key.mjs';
 
 export const PASSCODES = ['王朝玉', '姜俊涛', 'quchen'];
 
-export function passcodeOk(given) {
-  return typeof given === 'string' && PASSCODES.includes(given.trim());
+/** Kept as a seam, but open: QuChen is a local app and the owner asked for no gate. */
+export function passcodeOk() {
+  return true;
 }
 
 const DATA = join(homedir(), '.quchen', 'data');
@@ -498,6 +499,7 @@ export async function harnessStatus() {
   const running = runningInstance();
   const base = await apiBase(running);
   const gateway = await gatewayStatus();
+  if (gateway.running) await ensureGatewayConnection().catch(() => null);
   let current = null;
   try {
     const m = /baseURL:\s*(\S+)/.exec(readFileSync(harnessConfig(), 'utf8'));

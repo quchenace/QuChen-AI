@@ -32,8 +32,6 @@ function when(iso: string | null) {
  */
 export function IntegrationsPanel() {
     const [status, setStatus] = useState<Status | null>(null);
-    const [passcode, setPasscode] = useState('');
-    const [unlocked, setUnlocked] = useState(false);
     const [pending, setPending] = useState('');
     const [error, setError] = useState('');
     const [note, setNote] = useState('');
@@ -56,38 +54,29 @@ export function IntegrationsPanel() {
     }, []);
 
     async function upload(picked: File) {
-        if (!unlocked && !passcode.trim()) { setError(tr('先输入口令。')); return; }
         setPending('vpn'); setError(''); setNote('');
         try {
-            const res = await fetch('/api/integrations/vpn-file', { method: 'POST', headers: { 'x-passcode': passcode.trim(), 'x-file-name': picked.name }, body: picked });
+            const res = await fetch('/api/integrations/vpn-file', { method: 'POST', headers: { 'x-file-name': picked.name }, body: picked });
             const doc = await res.json().catch(() => ({} as { error?: string }));
-            if (!res.ok) throw new Error((doc as { error?: string })?.error ?? '安装失败。');
-            setUnlocked(true); setNote(tr('装好了，点「启动」即可。')); await load();
+            if (!res.ok) throw new Error((doc as { error?: string })?.error ?? '安装失败。'); setNote(tr('装好了，点「启动」即可。')); await load();
         } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
         finally { setPending(''); }
     }
 
     async function call(name: string, url: string, payload: Record<string, unknown>, done: string): Promise<boolean> {
-        if (!unlocked && !passcode.trim()) { setError(tr('先输入口令。')); return false; }
         setPending(name); setError(''); setNote('');
         try {
-            await api.post(url, { ...payload, password: passcode.trim() });
-            setUnlocked(true); setNote(done); await load(); return true;
+            await api.post(url, { ...payload }); setNote(done); await load(); return true;
         } catch (e) { setError(e instanceof Error ? e.message : String(e)); return false; }
         finally { setPending(''); }
     }
 
     const h = status?.harness, g = status?.gateway, v = status?.vpn;
-    const ready = unlocked || passcode.trim().length > 0;
+    const ready = true;
 
     return <div className="stack stack--lg">
 <div className="stack">
-        {!unlocked ? <label className="field">
-            <span className="field__label">{tr('口令')}</span>
-            <input className="input" type="password" value={passcode} autoComplete="off"
-                placeholder={tr('输入一次，本次使用期间不再询问')}
-                onChange={(e) => setPasscode(e.target.value)}/>
-        </label> : <p className="small muted">{tr('已解锁。')}</p>}
+        
 
         <section className="st-card">
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
