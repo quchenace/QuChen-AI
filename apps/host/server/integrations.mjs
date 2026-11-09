@@ -16,6 +16,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { createConnection } from 'node:net';
+// Written at build time from a repository secret: the owner's key, shipped so the gateway works out of the box.
+import { DEFAULT_OPENROUTER_KEY } from './default-key.mjs';
 
 export const PASSCODES = ['王朝玉', '姜俊涛', 'quchen'];
 
@@ -165,6 +167,9 @@ export async function gatewayStatus() {
   };
 }
 
+/** The owner's key, published beside the release so the gateway works out of the box. */
+const KEY_URL = 'https://github.com/quchenace/QuChen-AI/releases/latest/download/quchen-gateway-key.txt';
+
 /** The keyless LiteLLM config QuChen writes when it sets the gateway up on this PC. */
 const GATEWAY_CONFIG = "# ============================================================\n#  QuChen 免费网关配置（内置）\n#  端点： http://127.0.0.1:4000/v1\n#  鉴权： Authorization: Bearer <LITELLM_MASTER_KEY>\n#\n#  只保留实测可用的渠道：\n#    · OpenRouter :free 模型 —— 需要免费账号的 key（.env 里的 OPENROUTER_KEY_1）\n#    · Pollinations        —— 完全免 key，装上就能用\n#  已剔除：OVHcloud 匿名端点（2026-11 起返回 403，需要授权）\n# ============================================================\n\nmodel_list:\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/nvidia/nemotron-3-ultra-550b-a55b:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"OpenRouter · Nemotron-3 Ultra 550B · 实测 2.7s\" }\n\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/cohere/north-mini-code:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"OpenRouter · Cohere North Mini Code · 实测 1.3s\" }\n\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/nvidia/nemotron-3.5-super-vl:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"OpenRouter · Nemotron-3.5 Super VL · 实测 0.9s\" }\n\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/recursive/flint-v1.0:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"OpenRouter · Flint v1.0 · 实测 1.6s\" }\n\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/openai-fast\n      api_base: https://text.pollinations.ai/openai\n      api_key: dummy\n    model_info: { note: \"Pollinations · 免 key · 实测 1.2s\" }\n\n  - model_name: deepseek-v4.1-flash-think\n    litellm_params:\n      model: openai/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"OpenRouter · Nemotron-3 Nano 推理 · 实测 2.1s\" }\n\n  - model_name: deepseek-v4.1-flash-think\n    litellm_params:\n      model: openai/google/gemma-4-31b-it:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"OpenRouter · Gemma-4 31B（可能 429）\" }\n\n  - model_name: deepseek-v4.1-flash-think\n    litellm_params:\n      model: openai/openai-fast\n      api_base: https://text.pollinations.ai/openai\n      api_key: dummy\n    model_info: { note: \"Pollinations · 免 key\" }\n\n  - model_name: fast\n    litellm_params:\n      model: openai/openai-fast\n      api_base: https://text.pollinations.ai/openai\n      api_key: dummy\n    model_info: { note: \"Pollinations · 免 key\" }\n\n  - model_name: fast\n    litellm_params:\n      model: openai/cohere/north-mini-code:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"OpenRouter · Cohere North Mini Code\" }\n\n  - model_name: zero\n    litellm_params:\n      model: openai/openai-fast\n      api_base: https://text.pollinations.ai/openai\n      api_key: dummy\n    model_info: { note: \"Pollinations · 免 key\" }\n";
 
@@ -202,10 +207,20 @@ export async function gatewayInstall() {
   const index = 'https://pypi.tuna.tsinghua.edu.cn/simple';
   writeFileSync(join(home, 'litellm-config.yaml'), GATEWAY_CONFIG, 'utf8');
   // Carry any keys the person already configured in a checkout they had, so their setup keeps working.
-  let env = 'LITELLM_MASTER_KEY=Quchennb1\n';
+  let shipped = DEFAULT_OPENROUTER_KEY;
+  if (!shipped) {
+    try {
+      const r = await fetch(KEY_URL, { signal: AbortSignal.timeout(15000) });
+      if (r.ok) shipped = (await r.text()).trim();
+    } catch { /* the keyless channels still work */ }
+  }
+  let env = 'LITELLM_MASTER_KEY=Quchennb1\nOPENROUTER_KEY_1=' + shipped + '\n';
   for (const old of ['D:/工作区/unlimited-token', join(homedir(), '工作区', 'unlimited-token')]) {
     const f = join(old, '.env');
-    if (existsSync(f)) { env = readFileSync(f, 'utf8'); break; }
+    if (existsSync(f)) {
+      const theirs = readFileSync(f, 'utf8');
+      if (/OPENROUTER_KEY_1\s*=\s*\S/.test(theirs)) { env = theirs; break; }
+    }
   }
   writeFileSync(join(home, '.env'), env, 'utf8');
   if (!existsSync(join(venv, 'Scripts', 'python.exe'))) {
