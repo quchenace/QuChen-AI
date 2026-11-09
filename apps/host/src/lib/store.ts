@@ -394,10 +394,25 @@ export function selectRemoteModel(remoteModel: RemoteModelSelection | null) {
   if (id) patchSession(id, s => ({ ...s, preferences: { ...s.preferences, remoteModel } }));
   try { localStorage.removeItem('quchen.remote-model.v1'); } catch { /* The old global choice is retired. */ }
 }
+/**
+ * Nothing local is loaded but a gateway connection is saved: answer from the gateway instead of telling the
+ * person there is no model. Only ever fills a gap — a choice already made is left alone.
+ */
+function preferGatewayModel() {
+  const p = state.providers;
+  if (!p || state.remoteModel) return;
+  if (state.library?.loaded) return;
+  if (state.native?.instances?.some(i => i.status === 'ready' || i.status === 'loading')) return;
+  const connection = p.connections.find(c => c.models.length > 0);
+  if (!connection) return;
+  set({ remoteModel: { connectionId: connection.id, modelId: connection.models[0].id } });
+}
+
 function applyProviders(providers: ModelProviders) {
   // A chat whose API model was removed keeps its choice: the next send says the model is gone, rather
   // than quietly answering from the local model.
   set({ providers });
+  preferGatewayModel();
 }
 export async function saveModelConnection(draft: ModelConnectionDraft) {
   applyProviders(await api.post<ModelProviders>('/api/model-providers', draft));
@@ -828,6 +843,7 @@ function applyEvent(e: StreamEvent) {
       break;
     case 'native':
       applyNativeEvent(data);
+      preferGatewayModel();
       break;
     case 'image-models':
       if (Array.isArray(data.variants)) set({ imageModels: data as unknown as ImageModelLibrary });

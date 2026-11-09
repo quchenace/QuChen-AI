@@ -1,7 +1,7 @@
 {
   "name": "quchen-desktop",
   "productName": "QuChen",
-  "version": "0.2.27",
+  "version": "0.2.28",
   "private": true,
   "description": "QuChen Desktop - local AI, tuned to one model.",
   "scripts": {

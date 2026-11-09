@@ -3,15 +3,23 @@
  * check its SHA-256, then run it silently. The installer replaces the program files and QuChen starts
  * again; the model folder and the engine components are left alone.
  */
-import { createWriteStream, mkdirSync, rmSync } from 'node:fs';
+import { createWriteStream, mkdirSync, rmSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawn } from 'node:child_process';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
+import { execFile, spawn } from 'node:child_process';
 
 const MANIFEST = 'https://github.com/quchenace/QuChen-AI/releases/latest/download/latest.json';
+
+function downloadWithProxy(url, destination) {
+  return new Promise((resolve, reject) => {
+    const script = "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing -Uri '" + url.replace(/'/g, "''") + "' -OutFile '" + destination.replace(/'/g, "''") + "' -TimeoutSec 1800";
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], { windowsHide: true }, (error, _out, err) => {
+      if (error) reject(new Error(String(err || error.message).split(/\r?\n/).filter(Boolean).slice(-1)[0] || 'download failed'));
+      else resolve(destination);
+    });
+  });
+}
 
 export async function installAppUpdate() {
   const doc = await (await fetch(MANIFEST, { signal: AbortSignal.timeout(20000) })).json();
@@ -23,20 +31,13 @@ export async function installAppUpdate() {
   const file = join(dir, entry.url.split('/').pop() || 'QuChen-setup.exe');
   try { rmSync(file, { force: true }); } catch { /* none */ }
 
-  let res;
+  // Through the system proxy, so a running VPN makes the download work where a plain fetch cannot.
   try {
-    res = await fetch(entry.url, { signal: AbortSignal.timeout(30 * 60 * 1000) });
+    await downloadWithProxy(entry.url, file);
   } catch (e) {
-    throw new Error('安装包下载失败：这台电脑连不上 github.com。先打开 QuChen VPN（网关页 → 网络工具）再试，或用离线安装包。');
+    throw new Error('安装包下载失败：这台电脑连不上 github.com（' + (e && e.message ? e.message : 'network') + '）。先打开 QuChen VPN 再试，或用离线安装包。');
   }
-  if (!res.ok || !res.body) throw new Error('The installer could not be downloaded (' + res.status + ').');
-  const hash = createHash('sha256');
-  const sink = createWriteStream(file);
-  await pipeline(Readable.fromWeb(res.body), async function* (source) {
-    for await (const chunk of source) { hash.update(chunk); yield chunk; }
-  }, sink);
-
-  const got = hash.digest('hex');
+  const got = createHash('sha256').update(readFileSync(file)).digest('hex');
   if (entry.sha256 && got !== String(entry.sha256).toLowerCase()) {
     throw new Error('The installer did not match the published checksum.');
   }

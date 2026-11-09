@@ -140,6 +140,18 @@ async function listModels(baseUrl, key) {
   } catch { return []; }
 }
 
+
+/** Download through the system proxy when there is one: Node's fetch ignores it, and the VPN sets it. */
+export function downloadWithProxy(url, destination) {
+  return new Promise((resolve, reject) => {
+    const script = "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing -Uri '" + url.replace(/'/g, "''") + "' -OutFile '" + destination.replace(/'/g, "''") + "' -TimeoutSec 1800";
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], { windowsHide: true, maxBuffer: 1024 * 1024 }, (error, _out, err) => {
+      if (error) reject(new Error(String(err || error.message).split(/\r?\n/).filter(Boolean).slice(-1)[0] || 'download failed'));
+      else resolve(destination);
+    });
+  });
+}
+
 /* --------------------------------------------------------------- gateway --- */
 
 export function gatewayHome() {
@@ -362,29 +374,19 @@ export async function vpnInstall() {
     const asset = setup ?? zip;
     if (!asset) throw new Error('作者还没有发布安装包（Release 里没有 Setup.exe 或 zip）。');
 
-    vpnProgress = { phase: 'downloading', done: 0, total: asset.size ?? 0, message: '正在下载 ' + asset.name + '…' };
     const dir = vpnHome();
     mkdirSync(dir, { recursive: true });
     const file = join(dir, asset.name);
-    let res;
+    vpnProgress = { phase: 'downloading', done: 0, total: asset.size ?? 0, message: '正在下载 ' + asset.name + '（约 ' + Math.round((asset.size ?? 0) / 1048576) + ' MB）…' };
     try {
-      res = await fetch(asset.browser_download_url, { signal: AbortSignal.timeout(1800000) });
+      // Through the system proxy, so a running VPN makes this work where a plain fetch cannot.
+      await downloadWithProxy(asset.browser_download_url, file);
     } catch (e) {
-      throw new Error('下载失败：这台电脑到不了 GitHub 的下载服务器（' + (e && e.message ? e.message : 'network') + '）。用「从本地文件…」选一个 QuChenVPN 安装包即可。');
+      throw new Error('下载失败：这台电脑到不了 GitHub 的下载服务器（' + (e && e.message ? e.message : 'network') + '）。先打开 QuChen VPN 再试，或用「从本地文件…」选安装包。');
     }
-    if (!res.ok) throw new Error('下载失败（HTTP ' + res.status + '）。');
-    const total = Number(res.headers.get('content-length') ?? asset.size ?? 0);
-    const chunks = [];
-    let done = 0;
-    for await (const chunk of res.body) {
-      chunks.push(chunk);
-      done += chunk.length;
-      vpnProgress = { phase: 'downloading', done, total, message: '正在下载 ' + asset.name + '…' };
-    }
-    writeFileSync(file, Buffer.concat(chunks));
+    vpnProgress = { phase: 'installing', done: asset.size ?? 0, total: asset.size ?? 0, message: '正在安装…' };
 
     if (setup) {
-      vpnProgress = { phase: 'installing', done, total, message: '正在安装…' };
       await new Promise((resolve, reject) => {
         const child = spawn(file, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOCANCEL', '/MERGETASKS=!desktopicon'], { windowsHide: true });
         child.on('error', reject);
@@ -393,13 +395,12 @@ export async function vpnInstall() {
       try { rmSync(file, { force: true }); } catch { /* stays */ }
       await sleep(1200);
     } else {
-      vpnProgress = { phase: 'unpacking', done, total, message: '正在解压…' };
       await new Promise((resolve, reject) => execFile('powershell.exe',
         ['-NoProfile', '-Command', "Expand-Archive -LiteralPath '" + file + "' -DestinationPath '" + dir + "' -Force"],
         { windowsHide: true }, (e) => (e ? reject(new Error('解压失败：' + e.message)) : resolve(null))));
       try { rmSync(file, { force: true }); } catch { /* stays */ }
     }
-    vpnProgress = { phase: 'done', done, total, message: '安装完成' };
+    vpnProgress = { phase: 'done', done: asset.size ?? 0, total: asset.size ?? 0, message: '安装完成' };
     return vpnStatus();
   } catch (e) {
     vpnProgress = { ...vpnProgress, phase: 'error', message: e.message };
