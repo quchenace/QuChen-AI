@@ -733,6 +733,21 @@ SectionEnd
 Section Install
   SetOutPath $INSTDIR
 
+  ; QUCHEN-REPLACE-BEGIN
+  ; Replacing an older copy: stop everything running from this folder, then remove the program files outright.
+  ; Models, chats and settings live in the data folder (%APPDATA%\QuChen, %LOCALAPPDATA%\QuChen, the model folder), never here,
+  ; so removing $INSTDIR cannot touch them.
+  !insertmacro QuChenStopOwnProcesses "$INSTDIR"
+  Delete "$INSTDIR\${MAINBINARYNAME}.exe"
+  !insertmacro QuChenRemoveAppFolders "$INSTDIR"
+  Delete "$INSTDIR\*.dll"
+  Delete "$INSTDIR\*.exe"
+  Delete "$INSTDIR\*.pak"
+  Delete "$INSTDIR\*.bin"
+  RMDir /r "$INSTDIR\resources"
+  Sleep 800
+  ; QUCHEN-REPLACE-END
+
   !ifmacrodef NSIS_HOOK_PREINSTALL
     !insertmacro NSIS_HOOK_PREINSTALL
   !endif
