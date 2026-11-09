@@ -112,8 +112,8 @@ export function Sidebar({ containerRef }: {
       <div className="nav__foot">
         <button className="enginechip" data-state={status === 'Ready' ? 'ready' : ['Reading prompt', 'Thinking', 'Generating', 'Loading'].includes(status) ? 'busy' : 'off'} onClick={() => go('models')} title={tr("{0} \u00B7 {1} \u00B7 {2}", [modelName, workingLine ?? modelQuant, tr(status)])} aria-label={tr("{0} \u00B7 {1}", [modelName, modelQuant])}><span className="enginechip__family"><Icon name={modelFamilyIcon(current?.family)} size={20}/><span className="enginechip__dot"/></span><span className="enginechip__text nav__rail-hide"><span className="enginechip__title">{modelName}</span><span className="enginechip__sub">{workingLine ?? modelQuant}</span></span></button>
         <NavLink route="skills" label={tr("Skills")} icon="skills" current={location.route}/>
-        <NavLink route="gateway" label={tr("网关")} icon="link" current={location.route}/>
         <NavLink route="monitor" label={tr("Monitor")} icon="activity" current={location.route}/>
+        <NavLink route="gateway" label={tr("网关")} icon="link" current={location.route}/>
         <NavLink route="models" label={tr("Models")} icon="models" current={location.route === 'tuning' ? 'models' : location.route}/>
         <div className="nav__bottom"><MoreMenu current={location.route}/><button className="st-btn st-btn--icon theme-switch" aria-label={tr(dark ? 'Switch to light mode' : 'Switch to dark mode')} title={tr(dark ? 'Switch to light mode' : 'Switch to dark mode')} onClick={() => setTheme(dark ? 'light' : 'dark')}><span key={String(dark)} className="theme-switch__icon"><Icon name={dark ? 'sun' : 'moon'} size={19}/></span></button></div>
       </div>
