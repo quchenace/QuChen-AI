@@ -56,6 +56,33 @@ function writeSettings(patch) {
   return next;
 }
 
+/** The app's own model-connection store, so the gateway shows up as a normal model source. */
+let providerStore = null;
+export function attachProviders(store) { providerStore = store; }
+
+/** Register or refresh the gateway connection in the model picker (idempotent). */
+export async function ensureGatewayConnection() {
+  if (!providerStore) return null;
+  const gateway = await gatewayStatus();
+  if (!gateway.models.length) return null;
+  const list = providerStore.list();
+  const existing = list.connections.find((c) => c.name === 'QuChen 免费网关');
+  try {
+    providerStore.save({
+      id: existing?.id,
+      kind: 'custom',
+      name: 'QuChen 免费网关',
+      baseUrl: 'http://127.0.0.1:' + GATEWAY_PORT + '/v1',
+      protocol: 'openai-chat',
+      apiKey: gatewayKey(),
+      models: gateway.models.map((id) => ({ id, name: id })),
+    });
+    return providerStore.list().connections.find((c) => c.name === 'QuChen 免费网关') ?? null;
+  } catch (e) {
+    return null;
+  }
+}
+
 /** The engine QuChen started last: its port, its key and the model it serves. */
 export function runningInstance() {
   try {
@@ -256,7 +283,9 @@ export async function gatewayStart() {
   gatewayChild = child;
   writeSettings({ gatewayPid: child.pid });
   for (let i = 0; i < 30; i++) { await sleep(700); if (await portOpen(GATEWAY_PORT)) break; }
-  return gatewayStatus();
+  const status = await gatewayStatus();
+  if (status.running) await ensureGatewayConnection().catch(() => null);
+  return status;
 }
 
 export async function gatewayStop() {
@@ -421,19 +450,18 @@ function modelLines(ids, indent, nameFor) {
 }
 
 const HARNESS_BLOCK = (baseUrl, localIds, gatewayIds) => {
-  const lines = [
-    '- id: llm-pi-ai',
-    '  name: "@deepseek-ai/dsh-llm-pi-ai"',
-    '  config:',
-    '    providers:',
-    '      quchen:',
-    '        displayName: QuChen (本地大模型)',
-    '        api: openai-completions',
-    '        baseURL: ' + baseUrl,
-    '        apiKeyEnv: QUCHEN_API_KEY',
-    '        models:',
-    ...modelLines(localIds, '          ', localName),
-  ];
+  const lines = ['- id: llm-pi-ai', '  name: "@deepseek-ai/dsh-llm-pi-ai"', '  config:', '    providers:'];
+  if (localIds.length && baseUrl) {
+    lines.push(
+      '      quchen:',
+      '        displayName: QuChen (本地大模型)',
+      '        api: openai-completions',
+      '        baseURL: ' + baseUrl,
+      '        apiKeyEnv: QUCHEN_API_KEY',
+      '        models:',
+      ...modelLines(localIds, '          ', localName),
+    );
+  }
   if (gatewayIds.length) {
     lines.push(
       '      gateway:',
@@ -488,20 +516,27 @@ export async function harnessStatus() {
 /** Write the profile from the live state. Used by the button and by the keep-in-sync watcher. */
 async function writeProfile({ withGateway = true } = {}) {
   const running = runningInstance();
-  if (!running) throw new Error('QuChen 现在没有在跑的模型，先在「模型」里加载一个。');
-  const base = await apiBase(running);
-  if (!base.baseUrl) throw new Error('QuChen 还没有可用的 API 地址。');
-  const localModels = await listModels(base.baseUrl, running.key);
-  if (!localModels.length && running.model) localModels.push(running.model);
   const gateway = await gatewayStatus();
   const gatewayModels = withGateway ? gateway.models : [];
+  // No local model is fine: the gateway models alone are worth writing (the harness can use them).
+  let base = { baseUrl: null, via: 'none' };
+  let localModels = [];
+  if (running) {
+    base = await apiBase(running);
+    if (base.baseUrl) localModels = await listModels(base.baseUrl, running.key);
+    if (!localModels.length && running.model) localModels.push(running.model);
+  }
+  if (!localModels.length && !gatewayModels.length) {
+    throw new Error('没有可写入的模型：先在「模型」里加载一个本地的，或者启动免费网关。');
+  }
   mkdirSync(dshProfile(), { recursive: true });
   const before = existsSync(harnessConfig()) ? readFileSync(harnessConfig(), 'utf8') : '';
   writeFileSync(harnessConfig(), writeHarnessProfile(before, HARNESS_BLOCK(base.baseUrl, localModels, gatewayModels)), 'utf8');
-  ensureCredentialRef('QUCHEN_API_KEY', 'local');
+  if (localModels.length) ensureCredentialRef('QUCHEN_API_KEY', 'local');
   if (gatewayModels.length) ensureCredentialRef('QUCHEN_GATEWAY_KEY', gatewayKey());
-  writeSettings({ lastSync: new Date().toISOString(), lastModel: running.model, lastBase: base.baseUrl });
-  return { baseUrl: base.baseUrl, via: base.via, localModels, gatewayModels, running };
+  if (gatewayModels.length) await ensureGatewayConnection().catch(() => null);
+  writeSettings({ lastSync: new Date().toISOString(), lastModel: running ? running.model : null, lastBase: base.baseUrl });
+  return { baseUrl: base.baseUrl, via: base.via, localModels, gatewayModels, running: running ?? null };
 }
 
 export async function syncHarness({ withGateway = true } = {}) {

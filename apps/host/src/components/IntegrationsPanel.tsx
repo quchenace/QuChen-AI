@@ -130,7 +130,7 @@ export function IntegrationsPanel() {
                         onChange={(e) => void call('auto', '/api/integrations/auto', { on: e.target.checked }, e.target.checked ? tr('已开启：模型变化时自动同步。') : tr('已关闭自动同步。'))}/>
                     <span>{tr('自动保持同步（换模型/换端口都不用再点）')}</span>
                 </label>
-                <Btn size="sm" icon="refresh" disabled={!ready || pending !== '' || !h?.model}
+                <Btn size="sm" icon="refresh" disabled={!ready || pending !== '' || (!h?.model && !(h?.gatewayModels.length ?? 0))}
                     onClick={() => void call('sync', '/api/integrations/harness', {}, tr('已写入 Harness 配置，重启 Harness 后生效。'))}>{tr('立即同步')}</Btn>
             </div>
         </section>

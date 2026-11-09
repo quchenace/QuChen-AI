@@ -125,6 +125,7 @@ const hub = new EventHub();
 /** The chats, as files in the profile's data folder (chat-store.mjs). */
 const chatStore = createChatStore({ dir: store.DATA_DIR, privateDir: makePrivateDir });
 const modelProviders = createModelProviders({ directory: store.DATA_DIR, knownThinks: (connection, modelId) => visionProbe.knownThinks(connection, modelId), changed: value => hub.send('providers', withPictureAnswers(value)) });
+integrations.attachProviders(modelProviders);
 const imageModels = createImageModels({ dataDir: store.DATA_DIR, modelsDir: () => store.MODELS_DIR, real: models.REAL, changed: value => hub.send('image-models', value) });
 /* The installed app ships QuChen Control (python + quchen_control) next to the host; a source checkout has none and keeps its older paths. */
 const CONTROL = findControl();
