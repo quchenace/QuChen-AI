@@ -93,7 +93,7 @@ export function IntegrationsDialog({ open, onClose, paused, onPaused }: {
                     </div>
                 </div>
                 {!g?.present
-                    ? <p className="small muted" style={{ margin: '6px 0 0' }}>{tr('第一次用需要装一次（约 200 MB，装到 QuChen 自己的目录），以后直接启动。')}</p>
+                    ? <p className="small muted" style={{ margin: '6px 0 0' }}>{tr('第一次用点「安装」：用 QuChen 自带的 Python 在本机装好（约 2 分钟，不下载大文件），以后直接启动。')}</p>
                     : <p className="small muted" style={{ margin: '6px 0' }}>{g.dir}</p>}
                 {g && g.present && g.models.length ? <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
                     {g.models.map((m) => <span key={m} className="small" style={{ border: '1px solid var(--line, #e5e7eb)', borderRadius: 999, padding: '1px 8px' }}>{m}</span>)}

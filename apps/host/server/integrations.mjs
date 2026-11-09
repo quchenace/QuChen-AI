@@ -165,21 +165,55 @@ export async function gatewayStatus() {
   };
 }
 
-/** The gateway QuChen ships as a release asset: one download, unpacked once, then reused. */
-const GATEWAY_ZIP = 'https://github.com/quchenace/QuChen-AI/releases/latest/download/quchen-gateway.zip';
+/** The keyless LiteLLM config QuChen writes when it sets the gateway up on this PC. */
+const GATEWAY_CONFIG = "# ============================================================\n#  LiteLLM 全免费网关  ——  只保留实测跑通的渠道\n#  端点： http://127.0.0.1:4000/v1\n#  鉴权： Authorization: Bearer <LITELLM_MASTER_KEY>\n#\n#  所有上游分两类：\n#    [免key]  OVHcloud 匿名端点、Pollinations —— 不需要任何注册\n#    [免费]   OpenRouter :free 模型 —— 只需要一个免费账号的 key\n#\n#  已剔除：需要额外注册/充值/权限的渠道（会持续返回 401/402 噪音）\n# ============================================================\n\nmodel_list:\n  # ============================================================\n  #  deepseek-v4.1-flash —— 主力组（13 个上游，全部实测可用）\n  # ============================================================\n\n  # ---------- OVHcloud 匿名端点【免 key，2 RPM/IP/模型】----------\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/Meta-Llama-3_3-70B-Instruct\n      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1\n      api_key: dummy\n    model_info: { note: \"OVH · Llama-3.3-70B · 免key · 0.9s\" }\n\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/Mistral-Small-3.2-24B-Instruct-2506\n      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1\n      api_key: dummy\n    model_info: { note: \"OVH · Mistral-Small-24B · 免key · 0.9s\" }\n\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/gpt-oss-120b\n      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1\n      api_key: dummy\n    model_info: { note: \"OVH · gpt-oss-120b · 免key · 1.4s\" }\n\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/Qwen3.8-27B\n      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1\n      api_key: dummy\n    model_info: { note: \"OVH · Qwen3.8-27B · 免key\" }\n\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/Qwen2.5-VL-72B-Instruct\n      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1\n      api_key: dummy\n    model_info: { note: \"OVH · Qwen2.5-VL-72B · 视觉 · 免key\" }\n\n  # ---------- OpenRouter 免费模型（20 RPM / 50 RPD per 账号）----------\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/openai-fast\n      api_base: https://text.pollinations.ai/openai\n      api_key: dummy\n    model_info: { note: \"Pollinations · GPT-OSS 20B · 免key\" }\n\n  # ============================================================\n  #  deepseek-v4.1-flash-think —— 深度推理组\n  # ============================================================\n  - model_name: deepseek-v4.1-flash-think\n    litellm_params:\n      model: openai/gpt-oss-120b\n      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1\n      api_key: dummy\n    model_info: { note: \"OVH · gpt-oss-120b 推理\" }\n\n  - model_name: deepseek-v4.1-flash-think\n    litellm_params:\n      model: openai/Qwen3.5-397B-A17B\n      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1\n      api_key: dummy\n    model_info: { note: \"OVH · Qwen3.5-397B-A17B 免key\" }\n\n  - model_name: fast\n    litellm_params:\n      model: openai/Meta-Llama-3_3-70B-Instruct\n      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1\n      api_key: dummy\n    model_info: { note: \"OVH · Llama-70B · 免key\" }\n\n  - model_name: fast\n    litellm_params:\n      model: openai/Mistral-Small-3.2-24B-Instruct-2506\n      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1\n      api_key: dummy\n    model_info: { note: \"OVH · Mistral-24B · 免key\" }\n\n  - model_name: zero\n    litellm_params:\n      model: openai/Meta-Llama-3_3-70B-Instruct\n      api_base: https://oai.endpoints.kepler.ai.cloud.ovh.net/v1\n      api_key: dummy";
 
-export async function gatewayInstall({ url } = {}) {
+/** The Python that ships with QuChen (it has pip), so no download is needed to build the gateway. */
+function bundledPython() {
+  const candidates = [
+    join(process.env.LOCALAPPDATA || '', 'QuChen', 'install', 'control', 'python', 'python.exe'),
+    join(homedir(), 'QuChen', 'control', 'python', 'python.exe'),
+    'D:/QuChen/control/python/python.exe',
+  ];
+  for (const c of candidates) if (existsSync(c)) return c;
+  return 'python';
+}
+
+function runCapture(exe, args, env) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(exe, args, { windowsHide: true, env: { ...process.env, ...env } });
+    let out = '';
+    child.stdout.on('data', (b) => { out += b.toString(); });
+    child.stderr.on('data', (b) => { out += b.toString(); });
+    child.on('error', reject);
+    child.on('exit', (code) => (code === 0 ? resolve(out) : reject(new Error(out.split(/\r?\n/).filter(Boolean).slice(-3).join(' ').slice(0, 400) || ('exit ' + code)))));
+  });
+}
+
+/**
+ * Set the free gateway up on this PC: a virtualenv next to QuChen's own data, LiteLLM inside it, and the
+ * keyless config. Nothing is downloaded from GitHub, and the folder can be moved like any other.
+ */
+export async function gatewayInstall() {
   const home = gatewayHome();
   mkdirSync(home, { recursive: true });
-  const zip = join(home, 'gateway.zip');
-  const source = url || readSettings().gatewayZip || GATEWAY_ZIP;
-  const res = await fetch(source, { signal: AbortSignal.timeout(900000) });
-  if (!res.ok) throw new Error('下载免费网关失败（HTTP ' + res.status + '）。');
-  writeFileSync(zip, Buffer.from(await res.arrayBuffer()));
-  await new Promise((resolve, reject) => execFile('powershell.exe',
-    ['-NoProfile', '-Command', "Expand-Archive -LiteralPath '" + zip + "' -DestinationPath '" + home + "' -Force"],
-    { windowsHide: true }, (e) => (e ? reject(new Error('解压失败：' + e.message)) : resolve(null))));
-  try { rmSync(zip, { force: true }); } catch { /* left for the next try */ }
+  const venv = join(home, '.venv');
+  const py = bundledPython();
+  const index = 'https://pypi.tuna.tsinghua.edu.cn/simple';
+  writeFileSync(join(home, 'litellm-config.yaml'), GATEWAY_CONFIG, 'utf8');
+  // Carry any keys the person already configured in a checkout they had, so their setup keeps working.
+  let env = 'LITELLM_MASTER_KEY=Quchennb1\n';
+  for (const old of ['D:/工作区/unlimited-token', join(homedir(), '工作区', 'unlimited-token')]) {
+    const f = join(old, '.env');
+    if (existsSync(f)) { env = readFileSync(f, 'utf8'); break; }
+  }
+  writeFileSync(join(home, '.env'), env, 'utf8');
+  if (!existsSync(join(venv, 'Scripts', 'python.exe'))) {
+    await runCapture(py, ['-m', 'venv', venv], {});
+  }
+  const vpy = join(venv, 'Scripts', 'python.exe');
+  await runCapture(vpy, ['-m', 'pip', 'install', '--upgrade', 'pip', '--index-url', index, '--disable-pip-version-check'], {});
+  await runCapture(vpy, ['-m', 'pip', 'install', 'litellm[proxy]', '--index-url', index, '--disable-pip-version-check'], {});
   writeSettings({ gatewayDir: home, gatewayInstalled: new Date().toISOString() });
   return gatewayStatus();
 }
