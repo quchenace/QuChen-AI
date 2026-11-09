@@ -1673,8 +1673,12 @@ async function api(req, res, path, method, url) {
   if (path === '/api/integrations/gateway' && method === 'POST') {
     const body = await readBody(req);
     if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
-    if (body?.dir) integrations.setGatewayDir(body.dir);
-    return json(res, 200, await integrations.gatewayAction(body?.action === 'stop' ? 'stop' : 'start'));
+    return json(res, 200, await integrations.gatewayAction(body?.action === 'stop' ? 'stop' : body?.action === 'status' ? 'status' : 'start', body?.dir));
+  }
+  if (path === '/api/integrations/auto' && method === 'POST') {
+    const body = await readBody(req);
+    if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
+    return json(res, 200, integrations.setAutoSync(!!body?.on, body?.withGateway !== false));
   }
   if (path === '/api/integrations/pause' && method === 'POST') {
     const body = await readBody(req);
@@ -2374,6 +2378,7 @@ server.on('error', error => {
   console.error(`[quchen] ${listenProblem(error, PORT, HOST)}`);
   process.exit(1);
 });
+integrations.startHarnessWatcher();
 server.listen(PORT, HOST, () => {
   if (process.send) process.send({ type: 'quchen-ready', port: PORT });
   // Engines a lost owner left behind (an earlier crash, an older version): ended after a PID + start time + command-line check.

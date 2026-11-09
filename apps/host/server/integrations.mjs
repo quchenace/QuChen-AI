@@ -1,15 +1,17 @@
 /**
- * Integrations: the pieces around QuChen that used to need a hand-edited file.
+ * Integrations: the free-model gateway and the DeepSeek Harness profile, owned by the app.
  *
- *   - the DeepSeek Harness profile: one button writes the providers that point at QuChen's API
- *     (through the fixed 127.0.0.1:18080 proxy, so the engine's changing port never matters) and at
- *     the free-model gateway (127.0.0.1:4000). Every model the two expose is listed, not just one;
- *   - the free-model gateway itself: start, stop, and report what it serves;
- *   - pausing the model: no new request is accepted until it is resumed (the engine stays loaded).
+ *   - the gateway runs as a child of this process (no console window, no .vbs, no PowerShell):
+ *     start, stop, its log, and the models it serves are all read from here;
+ *   - one click writes the harness profile: every model the local engine lists, and every model the
+ *     gateway lists, both at fixed addresses (127.0.0.1:18080 and 127.0.0.1:4000);
+ *   - "keep in sync" rewrites that profile whenever the running model changes, so the harness never
+ *     points at a stale port or a model that is gone;
+ *   - pausing the model stops new API requests without unloading it.
  *
  * Every write is behind a passcode.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { execFile, spawn } from 'node:child_process';
@@ -21,29 +23,36 @@ export function passcodeOk(given) {
   return typeof given === 'string' && PASSCODES.includes(given.trim());
 }
 
+const DATA = join(homedir(), '.quchen', 'data');
 const dshProfile = () => join(homedir(), '.dsh', 'profiles', 'desktop');
 const harnessConfig = () => join(dshProfile(), 'cordis.patch.yml');
 const credentialsFile = () => join(homedir(), '.dsh', '.credentials.yaml');
-const instancesDir = () => join(homedir(), '.quchen', 'data', 'native-instances');
-const settingsFile = () => join(homedir(), '.quchen', 'data', 'integrations.json');
+const instancesDir = () => join(DATA, 'native-instances');
+const settingsFile = () => join(DATA, 'integrations.json');
+const gatewayLog = () => join(DATA, 'gateway.log');
 const PROXY_PORT = 18080;
 const GATEWAY_PORT = 4000;
+const CONTEXT = 131072;
+const MAX_TOKENS = 8192;
+const MAX_MODELS = 40;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function readSettings() {
   try { return JSON.parse(readFileSync(settingsFile(), 'utf8')); } catch { return {}; }
 }
 function writeSettings(patch) {
   const next = { ...readSettings(), ...patch };
-  mkdirSync(join(homedir(), '.quchen', 'data'), { recursive: true });
+  mkdirSync(DATA, { recursive: true });
   writeFileSync(settingsFile(), JSON.stringify(next, null, 1) + '\n', 'utf8');
   return next;
 }
 
-/** The engine QuChen started last: its port, its key and the model id it serves. */
+/** The engine QuChen started last: its port, its key and the model it serves. */
 export function runningInstance() {
   try {
-    const files = readdirSync(instancesDir()).filter(f => f.endsWith('.json'))
-      .map(f => join(instancesDir(), f))
+    const files = readdirSync(instancesDir()).filter((f) => f.endsWith('.json'))
+      .map((f) => join(instancesDir(), f))
       .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
     for (const f of files) {
       try {
@@ -69,18 +78,16 @@ function portOpen(port, timeout = 600) {
 async function ensureProxy() {
   if (await portOpen(PROXY_PORT)) return true;
   await new Promise((resolve) => execFile('schtasks.exe', ['/Run', '/TN', 'QuChen API proxy'], { windowsHide: true }, () => resolve(null)));
-  for (let i = 0; i < 10; i++) { await new Promise((r) => setTimeout(r, 400)); if (await portOpen(PROXY_PORT)) return true; }
+  for (let i = 0; i < 10; i++) { await sleep(400); if (await portOpen(PROXY_PORT)) return true; }
   return false;
 }
 
-/** The address the harness should use: the fixed proxy when it answers, else the engine's own port. */
 export async function apiBase(running = runningInstance()) {
   if (await ensureProxy()) return { baseUrl: 'http://127.0.0.1:' + PROXY_PORT + '/v1', via: 'proxy' };
   if (running) return { baseUrl: 'http://127.0.0.1:' + running.port + '/v1', via: 'engine' };
   return { baseUrl: null, via: 'none' };
 }
 
-/** The model ids an OpenAI-compatible server lists. */
 async function listModels(baseUrl, key) {
   try {
     const res = await fetch(baseUrl.replace(/\/+$/, '') + '/models', {
@@ -98,77 +105,94 @@ async function listModels(baseUrl, key) {
 
 export function gatewayDir() {
   const configured = readSettings().gatewayDir;
-  const candidates = [
-    configured,
-    process.env.QUCHEN_GATEWAY_DIR,
-    'D:/工作区/unlimited-token',
-    join(homedir(), '工作区', 'unlimited-token'),
-  ].filter(Boolean);
-  for (const c of candidates) if (existsSync(join(c, 'start-gateway.vbs'))) return c;
+  const candidates = [configured, process.env.QUCHEN_GATEWAY_DIR, 'D:/工作区/unlimited-token', join(homedir(), '工作区', 'unlimited-token')].filter(Boolean);
+  for (const c of candidates) if (existsSync(join(c, '.venv', 'Scripts', 'litellm.exe'))) return c;
   return configured || candidates[0];
 }
 
-function gatewayKey() {
-  const configured = readSettings().gatewayKey;
-  if (configured) return configured;
+function envFile(dir) {
+  const out = {};
   try {
-    const env = readFileSync(join(gatewayDir(), '.env'), 'utf8');
-    const hit = /^\s*LITELLM_MASTER_KEY\s*=\s*(.+)$/m.exec(env);
-    if (hit) return hit[1].trim().replace(/^["']|["']$/g, '');
+    for (const line of readFileSync(join(dir, '.env'), 'utf8').split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t || t.startsWith('#') || !t.includes('=')) continue;
+      const i = t.indexOf('=');
+      out[t.slice(0, i).trim()] = t.slice(i + 1).trim().replace(/^["']|["']$/g, '');
+    }
   } catch { /* no .env */ }
-  return 'Quchennb1';
+  return out;
 }
 
-/** The model names the gateway is configured with, for when it is not running yet. */
+function gatewayKey() { return readSettings().gatewayKey || envFile(gatewayDir()).LITELLM_MASTER_KEY || 'Quchennb1'; }
+
 function configuredGatewayModels() {
   try {
     const yaml = readFileSync(join(gatewayDir(), 'litellm-config.yaml'), 'utf8');
-    const names = [...yaml.matchAll(/^\s*-\s*model_name:\s*[\"']?([^\s\"'#]+)/gm)].map((m) => m[1]);
+    const names = [...yaml.matchAll(/^\s*-\s*model_name:\s*["']?([^\s"'#]+)/gm)].map((m) => m[1]);
     return [...new Set(names)];
   } catch { return []; }
 }
 
+function logTail(lines = 12) {
+  try {
+    const text = readFileSync(gatewayLog(), 'utf8');
+    const plain = text.replace(/\u001b\[[0-9;]*m/g, '');
+    return plain.split(/\r?\n/).filter(Boolean).slice(-lines).join('\n');
+  } catch { return ''; }
+}
+
 export async function gatewayStatus() {
   const dir = gatewayDir();
-  const running = await portOpen(GATEWAY_PORT, 900);
+  const running = await portOpen(GATEWAY_PORT, 700);
   const models = running ? await listModels('http://127.0.0.1:' + GATEWAY_PORT + '/v1', gatewayKey()) : [];
   return {
-    dir, present: existsSync(join(dir, 'start-gateway.vbs')), port: GATEWAY_PORT, running,
+    dir, port: GATEWAY_PORT, running,
+    present: existsSync(join(dir, '.venv', 'Scripts', 'litellm.exe')),
     models: models.length ? models : configuredGatewayModels(),
+    pid: readSettings().gatewayPid ?? null,
+    log: logTail(),
   };
 }
 
-export async function gatewayAction(action) {
+export async function gatewayStart() {
+  if (await portOpen(GATEWAY_PORT)) return gatewayStatus();
   const dir = gatewayDir();
-  const vbs = join(dir, 'start-gateway.vbs');
-  if (action === 'start') {
-    if (!existsSync(vbs)) throw new Error('No start-gateway.vbs in ' + dir + '. Set the gateway folder first.');
-    spawn('wscript.exe', [vbs], { cwd: dir, detached: true, stdio: 'ignore', windowsHide: true }).unref();
-    await new Promise((r) => setTimeout(r, 2500));
-    return gatewayStatus();
-  }
-  if (action === 'stop') {
-    await new Promise((resolve) => execFile('powershell.exe',
-      ['-NoProfile', '-Command', 'Get-NetTCPConnection -LocalPort ' + GATEWAY_PORT + ' -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }'],
-      { windowsHide: true }, () => resolve(null)));
-    await new Promise((r) => setTimeout(r, 800));
-    return gatewayStatus();
-  }
+  const exe = join(dir, '.venv', 'Scripts', 'litellm.exe');
+  if (!existsSync(exe)) throw new Error('这个文件夹里没有网关：' + dir);
+  mkdirSync(DATA, { recursive: true });
+  const fd = openSync(gatewayLog(), 'a');
+  const env = { ...process.env, ...envFile(dir), PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', LITELLM_LOCAL_MODEL_COST_MAP: 'True' };
+  const child = spawn(exe, ['--config', join(dir, 'litellm-config.yaml'), '--port', String(GATEWAY_PORT), '--host', '127.0.0.1'],
+    { cwd: dir, env, stdio: ['ignore', fd, fd], windowsHide: true, detached: true });
+  child.unref();
+  writeSettings({ gatewayPid: child.pid });
+  for (let i = 0; i < 30; i++) { await sleep(700); if (await portOpen(GATEWAY_PORT)) break; }
   return gatewayStatus();
 }
 
-/** Where the LiteLLM gateway checkout lives (the folder that has start-gateway.vbs). */
-export function setGatewayDir(dir) {
-  if (typeof dir !== 'string' || !dir.trim()) throw new Error('Give the gateway folder.');
-  writeSettings({ gatewayDir: dir.trim() });
-  return dir.trim();
+export async function gatewayStop() {
+  const pid = readSettings().gatewayPid;
+  if (pid) await new Promise((resolve) => execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => resolve(null)));
+  await new Promise((resolve) => execFile('powershell.exe',
+    ['-NoProfile', '-Command', 'Get-NetTCPConnection -LocalPort ' + GATEWAY_PORT + ' -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }'],
+    { windowsHide: true }, () => resolve(null)));
+  writeSettings({ gatewayPid: null });
+  await sleep(600);
+  return gatewayStatus();
+}
+
+export async function gatewayAction(action, dir) {
+  if (dir) writeSettings({ gatewayDir: dir });
+  if (action === 'start') return gatewayStart();
+  if (action === 'stop') return gatewayStop();
+  return gatewayStatus();
 }
 
 /* ---------------------------------------------------------------- writing --- */
 
-const CONTEXT = 131072;
-const MAX_TOKENS = 8192;
-const MAX_MODELS = 40;
+function localName(id) {
+  return id.replace(/^qwen(\d[\d.]*)-/, 'Qwen$1 ').replace(/-/g, ' ').replace(/\s+/g, ' ').trim() + ' (QuChen 本地)';
+}
 
 function modelLines(ids, indent, nameFor) {
   return ids.slice(0, MAX_MODELS).flatMap((id) => [
@@ -177,10 +201,6 @@ function modelLines(ids, indent, nameFor) {
     indent + '  contextWindow: ' + CONTEXT,
     indent + '  maxTokens: ' + MAX_TOKENS,
   ]);
-}
-
-function localName(id) {
-  return id.replace(/^qwen(\d[\d.]*)-/, 'Qwen$1 ').replace(/-/g, ' ').replace(/\s+/g, ' ').trim() + ' (QuChen 本地)';
 }
 
 const HARNESS_BLOCK = (baseUrl, localIds, gatewayIds) => {
@@ -216,9 +236,7 @@ export function writeHarnessProfile(text, block) {
   const start = text.indexOf('- id: llm-pi-ai');
   if (start < 0) return text.replace(/\n*$/, '\n') + block;
   const after = text.indexOf('\n- id: ', start + 1);
-  const head = text.slice(0, start);
-  const tail = after < 0 ? '' : text.slice(after + 1);
-  return head + block + tail;
+  return text.slice(0, start) + block + (after < 0 ? '' : text.slice(after + 1));
 }
 
 function ensureCredentialRef(name, value) {
@@ -237,8 +255,7 @@ export async function harnessStatus() {
   const gateway = await gatewayStatus();
   let current = null;
   try {
-    const text = readFileSync(harnessConfig(), 'utf8');
-    const m = /baseURL:\s*(\S+)/.exec(text);
+    const m = /baseURL:\s*(\S+)/.exec(readFileSync(harnessConfig(), 'utf8'));
     current = m ? m[1] : null;
   } catch { /* no profile yet */ }
   const localModels = base.baseUrl ? await listModels(base.baseUrl, running?.key) : [];
@@ -247,27 +264,56 @@ export async function harnessStatus() {
     model: running?.model ?? null, port: running?.port ?? null,
     baseUrl: base.baseUrl, via: base.via,
     localModels, gatewayModels: gateway.models,
+    autoSync: !!readSettings().autoSync, lastSync: readSettings().lastSync ?? null,
   };
 }
 
-export async function syncHarness({ withGateway = true } = {}) {
+/** Write the profile from the live state. Used by the button and by the keep-in-sync watcher. */
+async function writeProfile({ withGateway = true } = {}) {
   const running = runningInstance();
-  if (!running) throw new Error('QuChen is not serving a model right now. Load one first.');
+  if (!running) throw new Error('QuChen 现在没有在跑的模型，先在「模型」里加载一个。');
   const base = await apiBase(running);
-  if (!base.baseUrl) throw new Error('QuChen has no API address yet. Load a model first.');
+  if (!base.baseUrl) throw new Error('QuChen 还没有可用的 API 地址。');
   const localModels = await listModels(base.baseUrl, running.key);
   if (!localModels.length && running.model) localModels.push(running.model);
   const gateway = await gatewayStatus();
   const gatewayModels = withGateway ? gateway.models : [];
   mkdirSync(dshProfile(), { recursive: true });
   const before = existsSync(harnessConfig()) ? readFileSync(harnessConfig(), 'utf8') : '';
-  const after = writeHarnessProfile(before, HARNESS_BLOCK(base.baseUrl, localModels, gatewayModels));
-  writeFileSync(harnessConfig(), after, 'utf8');
+  writeFileSync(harnessConfig(), writeHarnessProfile(before, HARNESS_BLOCK(base.baseUrl, localModels, gatewayModels)), 'utf8');
   ensureCredentialRef('QUCHEN_API_KEY', 'local');
   if (gatewayModels.length) ensureCredentialRef('QUCHEN_GATEWAY_KEY', gatewayKey());
-  writeSettings({ lastSync: new Date().toISOString(), model: running.model, baseUrl: base.baseUrl });
-  return {
-    ok: true, profile: harnessConfig(), model: running.model, baseUrl: base.baseUrl, via: base.via,
-    localModels, gatewayModels, gatewayRunning: gateway.running,
-  };
+  writeSettings({ lastSync: new Date().toISOString(), lastModel: running.model, lastBase: base.baseUrl });
+  return { baseUrl: base.baseUrl, via: base.via, localModels, gatewayModels, running };
+}
+
+export async function syncHarness({ withGateway = true } = {}) {
+  const done = await writeProfile({ withGateway });
+  return { ok: true, profile: harnessConfig(), ...done, gatewayRunning: (await gatewayStatus()).running };
+}
+
+export function setAutoSync(on, withGateway = true) {
+  writeSettings({ autoSync: !!on, autoGateway: !!withGateway });
+  return { autoSync: !!on };
+}
+
+let watching = false;
+/** Rewrite the harness profile when the running model (or the gateway's model list) changes. */
+export function startHarnessWatcher() {
+  if (watching) return;
+  watching = true;
+  let lastKey = '';
+  setInterval(async () => {
+    const s = readSettings();
+    if (!s.autoSync) return;
+    const running = runningInstance();
+    if (!running) return;
+    const gateway = await gatewayStatus();
+    const key = [running.port, running.model, gateway.running, gateway.models.join(','), s.autoGateway].join('|');
+    if (key === lastKey) return;
+    try {
+      await writeProfile({ withGateway: s.autoGateway !== false });
+      lastKey = key;
+    } catch { /* the next tick */ }
+  }, 8000).unref?.();
 }
