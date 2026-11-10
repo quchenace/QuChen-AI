@@ -14,7 +14,10 @@
  * Plain text out, on purpose: no YAML library in the host, and the result is pinned by a test.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 
 /**
  * Lanes that only the plugin can drive, so LiteLLM must not pretend to.
@@ -84,6 +87,39 @@ export function freeModelCatalogue() {
     cached = { source: { package: 'dsh-our-free-model', version: 'unknown' }, providers: [] };
   }
   return cached;
+}
+
+let installedCache;
+/**
+ * The catalogue of the plugin actually installed for DSH, when there is one. The snapshot in
+ * free-models.json is pinned for review; this reads the live registry so a plugin update adds its new
+ * providers and models without waiting for a QuChen release. Returns null when no plugin is installed.
+ */
+export function installedCatalogue(env = process.env) {
+  if (installedCache !== undefined) return installedCache;
+  const homes = [String(env.DSH_HOME || '').trim(), join(env.USERPROFILE || homedir(), '.dsh')].filter(Boolean);
+  const names = ['@ebony-vinyl/dsh-our-free-model', 'dsh-our-free-model'];
+  const profiles = ['desktop', 'default', 'main'];
+  for (const home of homes) {
+    for (const profile of profiles) {
+      for (const name of names) {
+        const file = join(home, 'profiles', profile, 'node_modules', name, 'src', 'providers', 'registry.json');
+        if (!existsSync(file)) continue;
+        try {
+          const raw = readFileSync(file);
+          const providers = JSON.parse(raw.toString('utf8'));
+          if (!Array.isArray(providers) || !providers.length) continue;
+          installedCache = {
+            source: { package: '@ebony-vinyl/dsh-our-free-model', version: 'installed', registrySha256: createHash('sha256').update(raw).digest('hex') },
+            providers,
+          };
+          return installedCache;
+        } catch { /* next profile */ }
+      }
+    }
+  }
+  installedCache = null;
+  return null;
 }
 
 /** What the gateway serves with no key at all, plus the OpenRouter free ids the app's groups name. */
@@ -170,8 +206,8 @@ function block(record) {
  * Build the whole config. `env` is the `.env` object that will sit beside it.
  * Returns { text, models, providers, skipped } so the caller can report what it wrote.
  */
-export function buildGatewayConfig(env = {}, { includeAll = false, ofm = null } = {}) {
-  const catalogue = freeModelCatalogue();
+export function buildGatewayConfig(env = {}, { includeAll = false, ofm = null, catalog = null } = {}) {
+  const catalogue = catalog ?? freeModelCatalogue();
   const src = catalogue.source ?? {};
   const builtIn = BUILT_IN.filter((e) => !e.needs || String(env[settledKey(e.needs, env)] ?? '').trim())
     .map((e) => (e.needs ? { ...e, key: 'os.environ/' + settledKey(e.needs, env) } : e));
@@ -264,8 +300,9 @@ export function buildGatewayConfig(env = {}, { includeAll = false, ofm = null } 
 
 /** One line for the panel: what the file holds and where it came from. */
 export function describeGatewayConfig(env = {}, opts = {}) {
-  const built = buildGatewayConfig(env, opts);
-  const src = freeModelCatalogue().source ?? {};
+  const catalogue = opts.catalog ?? freeModelCatalogue();
+  const built = buildGatewayConfig(env, { ...opts, catalog: catalogue });
+  const src = catalogue.source ?? {};
   return {
     models: built.models.length,
     providers: built.providers.length,

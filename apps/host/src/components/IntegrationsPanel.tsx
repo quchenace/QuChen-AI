@@ -9,7 +9,8 @@ type Harness = {
     localModels: string[]; gatewayModels: string[];
     autoSync: boolean; lastSync: string | null;
 };
-type Gateway = { dir: string; port: number; running: boolean; present: boolean; models: string[]; pid: number | null; log: string; catalogue?: { models: number; providers: number; catalogue: string; catalogueProviders: number; skipped: number; keys: number } | null };
+type Health = { at: number; checking: boolean; ready: number; total: number; best: { model: string; ms: number }[]; error?: string | null };
+type Gateway = { dir: string; port: number; running: boolean; present: boolean; models: string[]; pid: number | null; log: string; health?: Health | null; catalogue?: { models: number; providers: number; catalogue: string; catalogueProviders: number; skipped: number; keys: number } | null };
 type Vpn = { dir: string; installed: boolean; exe: string | null; running: boolean; progress: { phase: string; done: number; total: number; message: string } };
 type Bun = { found: boolean; path: string | null; version: string | null; managed: boolean; home: string };
 type Status = { harness: Harness; gateway: Gateway; vpn: Vpn };
@@ -91,7 +92,7 @@ export function IntegrationsPanel() {
                     {!g?.present
                         ? <Btn size="sm" icon="download" disabled={!ready || pending !== ''} onClick={() => void call('gw', '/api/integrations/gateway', { action: 'install' }, tr('免费网关装好了，点「启动」就能用。'))}>{pending === 'gw' ? tr('安装中…') : tr('安装')}</Btn>
                         : g.running
-                            ? <Btn size="sm" variant="ghost" disabled={!ready || pending !== ''} onClick={() => void call('gw', '/api/integrations/gateway', { action: 'stop' }, tr('网关已停止。'))}>{tr('停止')}</Btn>
+                            ? <><Btn size="sm" variant="ghost" disabled={!ready || pending !== ''} onClick={() => void call('gwhealth', '/api/integrations/gateway/health', {}, tr('健康检查完成。'))}>{pending === 'gwhealth' ? tr('检查中…') : tr('检查可用性')}</Btn><Btn size="sm" variant="ghost" disabled={!ready || pending !== ''} onClick={() => void call('gw', '/api/integrations/gateway', { action: 'stop' }, tr('网关已停止。'))}>{tr('停止')}</Btn></>
                             : <Btn size="sm" icon="bolt" disabled={!ready || pending !== ''} onClick={() => void call('gw', '/api/integrations/gateway', { action: 'start' }, tr('网关已启动（几秒后就绪）。'))}>{tr('启动')}</Btn>}
                 </div>
             </div>
@@ -104,6 +105,11 @@ export function IntegrationsPanel() {
             {g?.catalogue ? <p className="small muted" style={{ margin: '6px 0 0' }}>
                 {tr('模型目录')} {g.catalogue.catalogue} · {tr('已启用')} {g.catalogue.providers} {tr('个上游')}
                 {g.catalogue.skipped ? ` · ${tr('其余')} ${g.catalogue.skipped} ${tr('个填了 key 就能用')}` : ''}
+            </p> : null}
+            {g?.health && g.health.total ? <p className="small muted" style={{ margin: '6px 0 0' }}>
+                {tr('可用性')} {g.health.ready}/{g.health.total} · {tr('推荐')}{' '}
+                {g.health.best.slice(0, 3).map((x) => x.model + ' ' + x.ms + 'ms').join(' · ') || '—'}
+                {g.health.error ? ' · ' + g.health.error : ''}
             </p> : null}
             {g?.present ? <details style={{ marginTop: 8 }} open={showLog} onToggle={(e) => setShowLog((e.target as HTMLDetailsElement).open)}>
                 <summary className="small">{tr('日志')}</summary>

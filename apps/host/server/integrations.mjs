@@ -11,7 +11,7 @@
  *
  * Every write is behind a passcode.
  */
-import { appendFileSync, createReadStream, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, createReadStream, existsSync, ftruncateSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -20,8 +20,9 @@ import { createConnection } from 'node:net';
 // Written at build time from a repository secret: the owner's key, shipped so the gateway works out of the box.
 import { DEFAULT_OPENROUTER_KEY } from './default-key.mjs';
 // The free-model catalogue of the dsh-our-free-model plugin, and the LiteLLM config built from it.
-import { buildGatewayConfig, describeGatewayConfig, freeModelCatalogue, parseEnv, envText } from './gateway-config.mjs';
+import { buildGatewayConfig, describeGatewayConfig, freeModelCatalogue, installedCatalogue, parseEnv, envText } from './gateway-config.mjs';
 import { ofmModels, ofmStatus } from './ofm-gateway.mjs';
+import { checkGatewayHealth, configureGatewayHealth, gatewayHealthStatus, startGatewayHealth, stopGatewayHealth } from './gateway-health.mjs';
 
 export const PASSCODES = ['王朝玉', '姜俊涛', 'quchen'];
 
@@ -186,7 +187,7 @@ function configuredGatewayModels() {
 
 /** What the config on disk was built from: the plugin catalogue and how much of it is live. */
 function gatewayCatalogue(dir) {
-  const opts = { includeAll: process.env.QUCHEN_GATEWAY_ALL === '1' };
+  const opts = { includeAll: process.env.QUCHEN_GATEWAY_ALL === '1', catalog: installedCatalogue() };
   try { return describeGatewayConfig(envFile(dir), opts); } catch { return null; }
 }
 
@@ -202,6 +203,9 @@ export async function gatewayStatus() {
   const dir = gatewayDir();
   const running = await portOpen(GATEWAY_PORT, 700);
   const models = running ? await listModels('http://127.0.0.1:' + GATEWAY_PORT + '/v1', gatewayKey()) : [];
+  if (running && models.length) {
+    configureGatewayHealth({ baseUrl: 'http://127.0.0.1:' + GATEWAY_PORT + '/v1', key: gatewayKey(), models });
+  }
   return {
     dir, port: GATEWAY_PORT, running, home: gatewayHome(),
     present: existsSync(join(dir, '.venv', 'Scripts', 'litellm.exe')) || existsSync(join(dir, '.venv', 'Scripts', 'python.exe')),
@@ -209,9 +213,22 @@ export async function gatewayStatus() {
     catalogue: gatewayCatalogue(dir),
     // The plugin's own gateway is a second upstream, not a catalogue: its models appear as ofm/<id>.
     ofm: await ofmStatus({ cacheMs: 1500 }),
+    // What answered a one-token probe recently, and the fastest of those: the panel recommends from here.
+    health: gatewayHealthStatus(),
     pid: readSettings().gatewayPid ?? null,
     log: logTail(),
   };
+}
+
+/**
+ * Probe the gateway now (or return the last result) and recommend the fastest working model. The panel
+ * calls this with force=1; the background timer keeps it fresh otherwise.
+ */
+export async function gatewayHealth({ force = false } = {}) {
+  if (!(await portOpen(GATEWAY_PORT))) return { ...gatewayHealthStatus(), running: false };
+  const baseUrl = 'http://127.0.0.1:' + GATEWAY_PORT + '/v1';
+  const models = await listModels(baseUrl, gatewayKey());
+  return { running: true, ...(await checkGatewayHealth({ baseUrl, key: gatewayKey(), models, force })) };
 }
 
 /** The owner's key, published beside the release so the gateway works out of the box. */
@@ -292,7 +309,7 @@ export async function gatewayInstall() {
  * start, so adding a key to .env (then restarting the gateway) is all it takes to gain that provider.
  */
 export function writeGatewayConfig(home, env = parseEnv(existsSync(join(home, '.env')) ? readFileSync(join(home, '.env'), 'utf8') : ''), { ofm = null } = {}) {
-  const built = buildGatewayConfig(env, { includeAll: process.env.QUCHEN_GATEWAY_ALL === '1', ofm });
+  const built = buildGatewayConfig(env, { includeAll: process.env.QUCHEN_GATEWAY_ALL === '1', ofm, catalog: installedCatalogue() });
   writeFileSync(join(home, 'litellm-config.yaml'), built.text, 'utf8');
   writeSettings({ gatewayModels: built.models.length, gatewayProviders: built.providers.length, gatewayCatalogue: (freeModelCatalogue().source ?? {}).version ?? null });
   return built;
@@ -347,11 +364,17 @@ export async function gatewayStart() {
   writeSettings({ gatewayPid: child.pid });
   for (let i = 0; i < 30; i++) { await sleep(700); if (await portOpen(GATEWAY_PORT)) break; }
   const status = await gatewayStatus();
-  if (status.running) await ensureGatewayConnection().catch(() => null);
+  if (status.running) {
+    const baseUrl = 'http://127.0.0.1:' + GATEWAY_PORT + '/v1';
+    configureGatewayHealth({ baseUrl, key: gatewayKey(), models: status.models });
+    startGatewayHealth({ baseUrl, key: gatewayKey(), models: status.models });
+    await ensureGatewayConnection().catch(() => null);
+  }
   return status;
 }
 
 export async function gatewayStop() {
+  stopGatewayHealth();
   const pid = readSettings().gatewayPid;
   if (pid) await new Promise((resolve) => execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => resolve(null)));
   await new Promise((resolve) => execFile('powershell.exe',
@@ -488,6 +511,10 @@ async function probeSpeed(url, budget = 7000) {
 
 /** GitHub release assets, then the relays people in CN actually get through. */
 const GH_MIRRORS = [
+  // Measured from this network on 2026-11-11: ghproxy.net 220 KB/s/stream and ~1 MB/s over four ranges;
+  // gh.nxnow.top 288 KB/s; ghfast/gh-proxy timed out. The probe still decides per run — these are only candidates.
+  { prefix: 'https://ghproxy.net/', label: '镜像 ghproxy.net' },
+  { prefix: 'https://gh.nxnow.top/', label: '镜像 nxnow' },
   { prefix: 'https://ghfast.top/', label: '镜像 ghfast' },
   { prefix: 'https://gh-proxy.com/', label: '镜像 gh-proxy' },
 ];
@@ -505,6 +532,76 @@ async function assetCandidates(url) {
   if (order.length) vpnProgress = { ...vpnProgress, message: vpnProgress.message + ' · 走 ' + order[0].label };
   order.push({ url: null, label: '系统代理' });
   return order;
+}
+
+/** Files below this use one stream: a few ranges would only add TCP slow starts. */
+const DL_MIN_PARALLEL = 8 * 1024 * 1024;
+/** Ranges in flight. One TCP stream gets ~220 KB/s from these mirrors; four already reach ~1 MB/s. */
+const DL_CONNECTIONS = 8;
+
+/**
+ * A large asset over several byte ranges. The mirrors throttle one connection, not the line: 8 ranges turn
+ * 31 MB from ~2.5 minutes into ~20 seconds here. Falls back to one stream when the server does not answer a
+ * ranged request (no 206) or the size is unknown; throws when a range keeps failing, so the caller can use
+ * the next mirror.
+ */
+export async function streamAssetParallel(url, file, total, message) {
+  const head = await fetch(url, { headers: { range: 'bytes=0-0', 'user-agent': 'quchen' }, signal: AbortSignal.timeout(15000) });
+  if (head.status !== 206) {
+    try { await head.body?.cancel(); } catch { /* none */ }
+    return streamAsset(url, file, total, message);
+  }
+  const range = /\/(\d+)\s*$/.exec(head.headers.get('content-range') || '');
+  const size = Number(range?.[1] || total || 0);
+  try { await head.body?.cancel(); } catch { /* none */ }
+  if (!size || size < DL_MIN_PARALLEL) return streamAsset(url, file, total || size, message);
+
+  const fd = openSync(file, 'w');
+  ftruncateSync(fd, size);
+  const step = Math.ceil(size / DL_CONNECTIONS);
+  let next = 0;
+  let done = 0;
+  let failed = null;
+  const controller = new AbortController();
+  const worker = async () => {
+    while (!failed) {
+      const i = next++;
+      const start = i * step;
+      const end = Math.min(size - 1, start + step - 1);
+      if (start > end) return;
+      let tries = 0;
+      for (;;) {
+        try {
+          const res = await fetch(url, {
+            headers: { range: 'bytes=' + start + '-' + end, 'user-agent': 'quchen' },
+            signal: controller.signal,
+          });
+          if (res.status !== 206) throw new Error('HTTP ' + res.status);
+          let pos = start;
+          for await (const chunk of res.body) {
+            writeSync(fd, chunk, 0, chunk.length, pos);
+            pos += chunk.length;
+            done += chunk.length;
+            vpnProgress = { phase: 'downloading', done, total: size, message: message + ' · 多线程 ' + DL_CONNECTIONS };
+          }
+          if (pos !== end + 1) throw new Error('range ended early');
+          break;
+        } catch (e) {
+          if (failed) return;
+          if (++tries >= 3) { failed = e; controller.abort(); return; }
+          await sleep(300 * tries);
+        }
+      }
+    }
+  };
+  try {
+    await Promise.all(Array.from({ length: DL_CONNECTIONS }, worker));
+  } catch (e) {
+    failed = e;
+  }
+  try { closeSync(fd); } catch { /* already closed */ }
+  if (failed || done !== size) throw failed || new Error('range download incomplete ' + done + '/' + size);
+  return size;
 }
 
 /** One candidate, streamed to disk with live progress. Throws when it cannot be finished. */
@@ -538,7 +635,7 @@ async function vpnFetchAsset(url, file, total, message) {
         vpnProgress = { phase: 'downloading', done: 0, total: total || 0, message: '改用系统代理…' };
         await downloadWithProxy(url, file);
       } else {
-        await streamAsset(candidate.url, file, total, message + (candidate.label && candidate.label !== '直连' ? '（' + candidate.label + '）' : ''));
+        await streamAssetParallel(candidate.url, file, total, message + (candidate.label && candidate.label !== '直连' ? '（' + candidate.label + '）' : ''));
       }
       const size = existsSync(file) ? statSync(file).size : 0;
       if (!size) throw new Error('没有拿到文件');

@@ -1672,6 +1672,9 @@ async function api(req, res, path, method, url) {
     if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
     return json(res, 200, await integrations.syncHarness({ withGateway: body?.withGateway !== false }));
   }
+  if (path === '/api/integrations/gateway/health' && (method === 'GET' || method === 'POST')) {
+    return json(res, 200, await integrations.gatewayHealth({ force: method === 'POST' || url.searchParams.get('force') === '1' }));
+  }
   if (path === '/api/integrations/gateway' && method === 'POST') {
     const body = await readBody(req);
     if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
