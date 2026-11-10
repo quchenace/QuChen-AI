@@ -550,7 +550,12 @@ export async function vpnStop() {
   await new Promise((resolve) => execFile('taskkill.exe', ['/IM', 'QuChenVPN.exe', '/T', '/F'], { windowsHide: true }, () => resolve(null)));
   await sleep(600);
   const st = await vpnStatus();
-  return { ...st, progress: { phase: 'idle', done: 0, total: 0, message: '已强制结束；系统代理若没恢复，再启动一次 QuChen VPN 让它自己还原。' } };
+  if (st.running) {
+    // An elevated copy cannot be closed by this per-user process. Installing over it would fail halfway and take the
+    // proxy down with it, so stop here and say what to do.
+    throw new Error('QuChen VPN 还在运行（可能是以管理员身份启动的）。请先退出它（或在任务管理器结束 QuChenVPN.exe），再重试。');
+  }
+  return { ...st, progress: { phase: 'idle', done: 0, total: 0, message: '已结束。' } };
 }
 
 /* ---------------------------------------------------------------- writing --- */

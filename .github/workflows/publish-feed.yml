@@ -92,12 +92,28 @@ jobs:
               kp = [n for n in names if '.kpack' in n]
               print(os.path.basename(f), 'entries', len(names), 'kpack', len(kp), kp[:4])
           PY
+      - name: Next feed sequence
+        id: seq
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          mkdir -p seq
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern quchen-feed.json --dir seq --clobber || true
+          if [ -f seq/quchen-feed.json ]; then
+            N=$(python -c "import json;print(int(json.load(open('seq/quchen-feed.json')).get('sequence',0))+1)")
+          else
+            N=1
+          fi
+          echo "n=$N" >> "$GITHUB_OUTPUT"
+          echo "feed sequence $N"
+
       - name: Build and upload the feed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
-          python packaging/feed_tool.py build-feed --out RELEASE --sequence 1 --key key/feed-key.json --engine RELEASE/engine --app-json app/app.json
+          python packaging/feed_tool.py build-feed --out RELEASE --sequence ${{ steps.seq.outputs.n }} --key key/feed-key.json --engine RELEASE/engine --app-json app/app.json
           ls -R RELEASE | head -30
           gh release upload "$TAG" RELEASE/quchen-feed.json RELEASE/quchen-feed.json.sig --clobber
           gh release upload "$TAG" RELEASE/engine/* --clobber

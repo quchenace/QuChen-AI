@@ -749,18 +749,33 @@ SectionEnd
 ; QUCHEN-WIPE-END
 
 ; QUCHEN-VPN-BEGIN
-; The optional QuChen VPN installs itself under the user's Programs folder. Removing or updating QuChen takes it
-; with it, so no half-updated copy is left behind.
-!macro QuChenRemoveVpn
-  ; Close it first: a running copy cannot be replaced or removed. Ask it to close before forcing it - QuChen VPN
-  ; puts the system proxy back when it exits, and killing it outright would leave the proxy pointing at a kernel
-  ; that is gone, which takes the whole machine off the network.
+; The optional QuChen VPN is a separate product with its own updater. Updating QuChen must NOT uninstall or stop it: the
+; VPN lives outside $INSTDIR and can be replaced on its own, and keeping it running keeps the person's network up during
+; the update. Only uninstalling QuChen stops it, restores nothing itself (the VPN does), and removes its folders.
+!macro QuChenStopVpn
+  ; Ask it to close first: taskkill without /F posts WM_CLOSE, and QuChen VPN puts the system proxy back when it exits.
+  ; Killing it outright would leave the proxy pointing at a kernel that is gone, which takes the machine off the network.
   nsExec::Exec '"$SYSDIR\taskkill.exe" /IM QuChenVPN.exe /T'
   Pop $1
-  Sleep 5000
-  nsExec::Exec '"$SYSDIR\taskkill.exe" /IM QuChenVPN.exe /T /F'
+  Sleep 8000
+  nsExec::ExecToStack 'cmd /c tasklist /FI "IMAGENAME eq QuChenVPN.exe" /NH | find /I "QuChenVPN.exe"'
   Pop $1
-  Sleep 800
+  Pop $2
+  StrCmp $1 "0" 0 vpn_stopped
+    ; Still running: usually an elevated copy this per-user uninstaller cannot close. In an interactive uninstall, stop
+    ; here and let the person close it (the VPN restores the proxy itself). A silent uninstall cannot ask: force it.
+    IfSilent vpn_force
+    MessageBox MB_ICONSTOP|MB_OK "QuChen VPN is still running. Close it first (it may be running as administrator), then run this uninstaller again. 请先退出 QuChen VPN（它可能以管理员身份运行），再继续卸载。"
+    Abort
+  vpn_force:
+    nsExec::Exec '"$SYSDIR\taskkill.exe" /IM QuChenVPN.exe /T /F'
+    Pop $1
+    Sleep 800
+  vpn_stopped:
+!macroend
+
+!macro QuChenRemoveVpn
+  ; Only on uninstall: remove the per-user setup and the portable copy QuChen's own integrations install.
   StrCpy $0 "$LOCALAPPDATA\Programs\QuChen VPN"
   IfFileExists "$0\unins000.exe" 0 +3
     nsExec::Exec '"$0\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
@@ -799,7 +814,6 @@ Section Install
   !insertmacro QuChenStopOwnProcesses "$INSTDIR"
   Delete "$INSTDIR\${MAINBINARYNAME}.exe"
   !insertmacro QuChenRemoveAppFolders "$INSTDIR"
-  !insertmacro QuChenRemoveVpn
   !insertmacro QuChenWipeData
   Delete "$INSTDIR\*.dll"
   Delete "$INSTDIR\*.exe"
@@ -953,7 +967,8 @@ Section Uninstall
   !endif
 
   !insertmacro QuChenStopOwnProcesses "$INSTDIR"
-  ; The optional QuChen VPN goes with it.
+  ; The optional QuChen VPN goes with it when QuChen is uninstalled.
+  !insertmacro QuChenStopVpn
   !insertmacro QuChenRemoveVpn
   !insertmacro CheckIfAppIsRunning "$INSTDIR\${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
 
