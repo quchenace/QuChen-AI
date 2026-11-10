@@ -17,7 +17,7 @@
  * four-byte "zip" and no network.
  */
 import { createHash } from 'node:crypto';
-import { appendFileSync, copyFileSync, createReadStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { appendFileSync, copyFileSync, createReadStream, existsSync, linkSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
@@ -134,13 +134,40 @@ export function persistBunEnv(bun, env = process.env) {
 }
 
 /**
+ * The plugin looks for `~/.bun/bin/bun.exe` on its own, before any environment variable. When QuChen's Bun
+ * lives in its own folder (a fresh download), a hard link there makes the lane work for a DSH started from
+ * Explorer, whose environment block predates our registry write. Same volume: instant; another volume: a copy.
+ */
+export function publishBunToHome(bun, env = process.env) {
+  if (!usableBun(bun)) return false;
+  const full = resolve(bun);
+  const target = join(homeDir(env), '.bun', 'bin', EXE);
+  if (resolve(target) === full) return true;
+  try {
+    if (existsSync(target)) return usableBun(target);          // never replace a Bun the person installed
+    mkdirSync(dirname(target), { recursive: true });
+    rmSync(target, { force: true });
+    try {
+      linkSync(full, target);                                   // hard link: no second 115 MB on disk
+    } catch {
+      copyFileSync(full, target);                               // another volume
+    }
+    return usableBun(target);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Ensure a Bun exists and publish its path to the user environment. The app calls this once in the
  * background when the dsh-our-free-model plugin is installed, and the Bun card calls it on demand.
  */
 export async function ensureBunShared(opts = {}) {
   const got = await ensureBun(opts);
-  const shared = persistBunEnv(got.path, opts.env ?? process.env);
-  return { ...got, shared };
+  const env = opts.env ?? process.env;
+  const atHome = publishBunToHome(got.path, env);
+  const shared = persistBunEnv(got.path, env);
+  return { ...got, shared, atHome };
 }
 
 const versionCache = new Map();
