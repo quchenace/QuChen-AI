@@ -752,7 +752,12 @@ SectionEnd
 ; The optional QuChen VPN installs itself under the user's Programs folder. Removing or updating QuChen takes it
 ; with it, so no half-updated copy is left behind.
 !macro QuChenRemoveVpn
-  ; Close it first: a running copy cannot be replaced or removed.
+  ; Close it first: a running copy cannot be replaced or removed. Ask it to close before forcing it - QuChen VPN
+  ; puts the system proxy back when it exits, and killing it outright would leave the proxy pointing at a kernel
+  ; that is gone, which takes the whole machine off the network.
+  nsExec::Exec '"$SYSDIR\taskkill.exe" /IM QuChenVPN.exe /T'
+  Pop $1
+  Sleep 5000
   nsExec::Exec '"$SYSDIR\taskkill.exe" /IM QuChenVPN.exe /T /F'
   Pop $1
   Sleep 800
