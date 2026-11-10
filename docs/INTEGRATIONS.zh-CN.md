@@ -38,9 +38,12 @@
 
 ## 3. QuChen VPN（可选）
 
-- 「网关」页 → 网络工具 → 下载安装：下载 `QuChenVPN-Setup.exe`，**静默安装**，面板里显示下载进度。
-- 下载走系统代理（`Invoke-WebRequest`），所以 VPN 已经连着的时候能下得动；纯直连到不了 github.com 时，用「从本地文件…」。
-- **更新/卸载 QuChen 会一起处理 VPN**：先 `taskkill /IM QuChenVPN.exe`，再静默运行它的卸载程序，最后删目录。
+- 「网关」页 → 网络工具 → 下载安装：从 QuChen-VPN 最新 Release 取**免安装 zip**（`QuChenVPN-win64.zip`），解到 `%LOCALAPPDATA%\QuChen\tools\QuChenVPN`，面板里显示下载进度。用 zip 的理由：不需要管理员，落在 QuChen 自己管的目录里，QuChen-VPN 自带的更新（把自己整个目录镜像成新版）也照常工作。
+- Release 里只有 `QuChenVPN-Setup.exe`（没有 zip）时才静默跑安装器，并用 `/DIR` 指向同一个目录，两条路装到一处。zip 里带一层 `QuChenVPN\` 目录，安装时会压平，装完 `QuChenVPN.exe` 直接在 `tools\QuChenVPN` 下。
+- 下载**先直连**，不通再走系统代理（`Invoke-WebRequest`）；纯直连到不了 github.com 时，用「从本地文件…」选 zip 或 exe。
+- 重装/更新用镜像复制（`robocopy /MIR`，排除 `data`、`logs`、`settings.json`）：新版不再带的旧文件会被删掉，VPN 自己的设置留着。
+- 停止**先请它正常退出**：QuChen VPN 退出时会把系统代理还原；只有几秒内不响应才强制结束。
+- **更新/卸载 QuChen 会一起处理 VPN**：先让它正常退出（不响应再 `taskkill /F`），再静默运行它的卸载程序（有的话），最后删目录。
 - VPN 自己带强制更新：启动检查，有新版弹不可关闭的提示。
 
 ## 4. 数据放哪
