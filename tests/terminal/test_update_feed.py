@@ -209,10 +209,49 @@ class Selection(unittest.TestCase):
         self.assertIsNone(self.pick([metal])[0], "wrong platform")
         self.assertIsNotNone(self.pick([metal], platform="macos-arm64", backend="metal")[0])
 
+    def test_a_card_with_only_ptx_in_the_installed_build_moves_to_the_native_build(self):
+        both = [entry(variant="cuda12", driver="575.51", archs=("sm_60", "sm_86", "compute_89")),
+                entry(variant="cuda13", archs=("sm_75", "sm_86", "sm_89", "sm_120", "compute_120"))]
+        got, reasons = self.pick(both, cuda_archs=["sm_120"], installed_variant="cuda12")
+        self.assertEqual(got.variant, "cuda13", "the CUDA 12 build has no sm_120 code: only PTX, and the native build is better")
+        self.assertTrue(any("PTX" in r for r in reasons), reasons)
+        kept, _ = self.pick(both, cuda_archs=["sm_86"], installed_variant="cuda12")
+        self.assertEqual(kept.variant, "cuda12", "sm_86 has its own code in the CUDA 12 build: the build is kept (#3835)")
+
     def test_min_runtime(self):
         got = self.pick([entry(min_runtime="0.1.50")])
         self.assertIsNone(got[0])
         self.assertIn("needs control 0.1.50", got[1][0])
+
+
+class DriverHint(unittest.TestCase):
+    """An RTX 50 card is supported by the CUDA 13 build; when only its driver is too old, the person is told that instead
+    of a list of cards that says the card is not supported (the 0.2.28 report)."""
+
+    HW = {"platform": "windows-x86_64", "backend": "cuda", "nvidia_driver": "577.00", "cuda_archs": ["sm_120"]}
+
+    @staticmethod
+    def pkgs(*entries):
+        return [feedmod._engine_package(e) for e in entries]
+
+    def windows(self, **extra):
+        return entry(platform="windows-x86_64", **extra)
+
+    def test_only_the_driver_stands_between_the_card_and_the_engine(self):
+        cuda12 = self.windows(variant="cuda12", driver="575.51", archs=("sm_60", "sm_86", "compute_89"))
+        cuda13 = self.windows(variant="cuda13", driver="580.65", archs=("sm_75", "sm_120", "compute_120"))
+        hint = feedmod.driver_update_hint(self.pkgs(cuda12, cuda13), self.HW)
+        self.assertIn("580.65", hint)
+        self.assertIn("577.00", hint)
+        self.assertIn("sm_120", hint)
+        self.assertIn("nothing has been changed", hint)
+        self.assertIsNone(feedmod.driver_update_hint(self.pkgs(cuda12, cuda13), {**self.HW, "nvidia_driver": "581.00"}))
+        self.assertIsNone(feedmod.driver_update_hint(self.pkgs(cuda12), self.HW), "the CUDA 12 build fits through PTX: no driver excuse")
+        self.assertIsNone(feedmod.driver_update_hint([], self.HW))
+
+    def test_a_card_the_engine_has_no_code_for_is_not_called_a_driver_problem(self):
+        only13 = self.windows(variant="cuda13", driver="580.65", archs=("sm_75", "sm_86"))
+        self.assertIsNone(feedmod.driver_update_hint(self.pkgs(only13), self.HW), "sm_120 is not covered at all: that is a card problem")
 
 
 class References(unittest.TestCase):

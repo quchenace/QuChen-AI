@@ -30,14 +30,15 @@ jobs:
         shell: pwsh
         run: |
           switch ("${{ matrix.variant }}") {
-            "cuda13" { $cuda = "13.3.0"; $archs = "75;86;89;120"; $sm60 = "OFF"; $mind = "580.65" }
-            "cuda12" { $cuda = "12.9.0"; $archs = "60;61;70;75;80;86;89"; $sm60 = "ON"; $mind = "575.51" }
+            "cuda13" { $cuda = "13.3.0"; $archs = "75;86;89;120"; $sm60 = "OFF"; $mind = "580.65"; $dsv41 = "ON" }
+            "cuda12" { $cuda = "12.9.0"; $archs = "60;61;70;75;80;86;89"; $sm60 = "ON"; $mind = "575.51"; $dsv41 = "OFF" }
             default  { throw "unknown variant ${{ matrix.variant }}" }
           }
           "cuda=$cuda" >> $env:GITHUB_OUTPUT
           "archs=$archs" >> $env:GITHUB_OUTPUT
           "sm60=$sm60" >> $env:GITHUB_OUTPUT
           "mindriver=$mind" >> $env:GITHUB_OUTPUT
+          "dsv41=$dsv41" >> $env:GITHUB_OUTPUT
 
       - name: Visual Studio 2022 Build Tools (CUDA 12 does not support VS 2026)
         if: matrix.variant == 'cuda12'
@@ -82,11 +83,15 @@ jobs:
           $real = ($archs | ForEach-Object { "$_-real" }) -join ";"
           $cudaArch = "$real;$($archs[-1])-virtual"
           Write-Host "CUDA architectures: $cudaArch"
-          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DQUCHEN_ENABLE_CUDA=ON -DQUCHEN_BUILD_TESTS=OFF -DQUCHEN_EXPERIMENTAL_SM60=${{ steps.p.outputs.sm60 }} -DQUCHEN_NATIVE_EXPERTS=ON -DQUCHEN_PORTABLE=ON -DQUCHEN_Q6K_EXPERTS=ON -DQUCHEN_MMQ_KQUANTS=ON "-DCMAKE_CUDA_ARCHITECTURES=$cudaArch" "-DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler" "-DQUCHEN_GGML_DIR=$ggml"
+          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DQUCHEN_ENABLE_CUDA=ON -DQUCHEN_BUILD_TESTS=OFF -DQUCHEN_EXPERIMENTAL_SM60=${{ steps.p.outputs.sm60 }} -DQUCHEN_BUILD_DSV41=${{ steps.p.outputs.dsv41 }} -DQUCHEN_NATIVE_EXPERTS=ON -DQUCHEN_PORTABLE=ON -DQUCHEN_Q6K_EXPERTS=ON -DQUCHEN_MMQ_KQUANTS=ON "-DCMAKE_CUDA_ARCHITECTURES=$cudaArch" "-DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler" "-DQUCHEN_GGML_DIR=$ggml"
 
       - name: Build the engine
         shell: pwsh
-        run: cmake --build build --target quchen -j 4
+        run: |
+          cmake --build build --target quchen -j 4
+          # The DeepSeek-V4.1 engine (quchen-dsv41) ships INSIDE the CUDA 13 package: the same CUDA 13 toolchain sm_120 needs, and setup.py
+          # looks for it beside the engine and in the app's installed engine package. The CUDA 12 package has no DeepSeek path.
+          if ("${{ steps.p.outputs.dsv41 }}" -eq "ON") { cmake --build build --target quchen-dsv41 -j 4 }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -103,12 +108,14 @@ jobs:
           $stage = "stage-${{ matrix.variant }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item build/quchen.exe $stage/
+          if ("${{ steps.p.outputs.dsv41 }}" -eq "ON") { Copy-Item build/quchen-dsv41.exe $stage/ }
           $archs = "${{ steps.p.outputs.archs }}"
-          @{ version = $ver; source = "build-engine.yml"; archs = $archs; cuda = "${{ steps.p.outputs.cuda }}"; portable = $true } | ConvertTo-Json | Set-Content "$stage/BUILD.json" -Encoding utf8
+          @{ version = $ver; source = "build-engine.yml"; archs = $archs; cuda = "${{ steps.p.outputs.cuda }}"; portable = $true; dsv41 = ("${{ steps.p.outputs.dsv41 }}" -eq "ON") } | ConvertTo-Json | Set-Content "$stage/BUILD.json" -Encoding utf8
           $archArgs = @()
           foreach ($a in ($archs -split ";")) { $archArgs += @("--arch", "sm_$a") }
           $last = ($archs -split ";")[-1]
-          python packaging/package_engine.py --src $stage --backend cuda --version $ver --out out-engine @archArgs --arch "compute_$last" --min-driver nvidia=${{ steps.p.outputs.mindriver }} --variant ${{ matrix.variant }} --platform windows-x86_64 --build-id "gha-$ver-${{ matrix.variant }}"
+          $req = if ("${{ steps.p.outputs.dsv41 }}" -eq "ON") { "--require-dsv41" } else { "" }
+          python packaging/package_engine.py --src $stage --backend cuda --version $ver --out out-engine @archArgs --arch "compute_$last" --min-driver nvidia=${{ steps.p.outputs.mindriver }} --variant ${{ matrix.variant }} --platform windows-x86_64 --build-id "gha-$ver-${{ matrix.variant }}" $req
           Get-ChildItem out-engine -Recurse | Select-Object FullName,Length
 
       - uses: actions/upload-artifact@v4

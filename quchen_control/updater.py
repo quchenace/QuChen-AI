@@ -621,7 +621,16 @@ def _choose_engine(feed: feedmod.Feed, ctx: Context, state: State) -> tuple[dict
         report["status"] = "current"
         report["note"] = f"the feed offers {offered.version}, older than the installed {installed.version}; an update never downgrades"
     elif want == have:
-        report["status"] = "current"
+        # The same version in another CUDA build: the installed one runs this card only through PTX and the offered one has its own
+        # code for it (an RTX 50 card on the CUDA 12 build against the CUDA 13 one). That is an update, not a change of nothing.
+        switch = (installed.backend == "cuda" and offered.backend == "cuda" and installed.variant and offered.variant
+                  and installed.variant != offered.variant)
+        if switch:
+            report["status"] = "available"
+            report["note"] = (f"the {offered.variant} build has code made for this card; the installed {installed.variant} one runs it only through "
+                              "the compatibility path (PTX). Updating the engine switches to the faster build.")
+        else:
+            report["status"] = "current"
     else:
         report["status"] = "available"
     # The offered engine is already installed (the person switched to an older one for a test): the update only makes it the engine in use again,

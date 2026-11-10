@@ -184,15 +184,24 @@ export function createNativeControl({directory,requests=()=>[],changed=()=>{},sp
   if(busy(requests().filter(r=>instances.has(r.instanceId))))throw new Error('Finish or cancel requests before preparing model files.');
   for(const id of [...instances.keys()])await unload(id);
   if(job.state!=='running')return;
-  let result=await tool('quchen_install',installArgs(args,true));
   /* The engine comes with the model: the same job makes sure this PC has a usable engine (none installed, or a newer compatible
      one in the signed feed) through Control's component updater, and shows it in the job's own progress (install.engine, install.parts,
      one combined download total). A failed engine download keeps the model files and ends with a retry message. */
   job.engineAbort=new AbortController();
   const engineStep=packaged&&typeof control.update==='function'?createEngineStep({control,signal:job.engineAbort.signal,onChange:()=>{if(job.rawResult)publish(job.rawResult);else emit();}}):null;
   const publish=r=>{job.rawResult=r;job.summary=r.summary;job.result=engineStep&&r.install?{...r,install:engineStep.merge(r.install)}:r;emit();};
+  /* DeepSeek-V4.1-Flash runs on its own engine package (quchen-dsv41), which only the CUDA 13 engine package carries. The installer checks
+     for it in its fourth step, before it fetches any model file, so an engine that is still the CUDA 12 build fails there while the engine
+     update below runs too late. For that model the engine is prepared first; every other model keeps the combined progress. */
+  let engineTask=null;
+  if(engineStep&&args.family==='deepseek41'){
+    job.summary='Preparing the engine for DeepSeek-V4.1-Flash…';emit();
+    await engineStep.run();
+    job.result={summary:job.summary,engine:engineStep.part()};emit();
+  }
+  let result=await tool('quchen_install',installArgs(args,true));
   publish(result);
-  const engineTask=engineStep?engineStep.run():null;
+  if(engineStep&&args.family!=='deepseek41') engineTask=engineStep.run();
   try{
    for(;;){
     if(job.state!=='running')return;

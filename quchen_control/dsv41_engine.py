@@ -247,9 +247,11 @@ def install_package(dest: Path, package: str | os.PathLike, *, emit: Callable[[s
         shutil.rmtree(work, ignore_errors=True)
 
 
-def install(dest: Path, source: str, *, hardware: dict | None = None, emit: Callable[[str], None] = print, cancel=None) -> Path | None:
+def install(dest: Path, source: str, *, hardware: dict | None = None, emit: Callable[[str], None] = print, cancel=None,
+            report: dict | None = None) -> Path | None:
     """Fetch the DeepSeek engine package for this PC from the signed feed at `source` (a URL or a folder) into `dest`.
-    Returns the new quchen-dsv41, or None with a plain line through `emit` when there is none (not in the feed, nothing for this PC)."""
+    Returns the new quchen-dsv41, or None with a plain line through `emit` when there is none (not in the feed, nothing for this PC).
+    "report" (optional) is filled with what the feed held when nothing fit, so the caller can say why in one plain sentence."""
     from quchen_control import feed as feedmod, signing, updater
 
     dest = Path(dest)
@@ -264,6 +266,8 @@ def install(dest: Path, source: str, *, hardware: dict | None = None, emit: Call
         feed = updater.open_feed(ctx, state)
         pkg, reasons = feedmod.select_engine(list(feed.dsv41), hw)
         if pkg is None:
+            if report is not None:
+                report.update({"reasons": list(reasons), "hardware": hw, "engines": list(feed.engine), "dsv41": list(feed.dsv41)})
             hip = [p for p in feed.dsv41 if p.backend == "hip" and p.platform == hw.get("platform")]
             line = card_problem(tuple(sorted({a for p in hip for a in p.archs if str(a).startswith("gfx")})), hw.get("gfx") or []) if hw.get("backend") == "hip" else None
             emit(line or ("There is no DeepSeek engine package for this computer in the update feed"

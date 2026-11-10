@@ -8704,6 +8704,12 @@ def dsv41_engine_pending(eng: Path) -> bool:
     return bool(dsv41_engine.pending(dsv41_engine_dir(eng)))
 
 
+#: What the last get_dsv41_engine() found when it got nothing: one plain sentence naming the real reason (the NVIDIA
+#: driver this PC needs for the engine package, when that is it). The failure message below says it instead of the card list,
+#: which is wrong when the card IS supported and only its driver is too old.
+DSV41_MISSING_HINT = ""
+
+
 def dsv41_manual_steps(eng: Path) -> str:
     return (f"If you downloaded the DeepSeek engine package from the release page (the file quchen-dsv41-...-{'windows' if WIN else 'linux'}-....tar.gz), "
             f"run the same command again with --dsv41-package PATH-OF-THE-FILE (quchen launch accepts it too), or put the file in {dsv41_engine_dir(eng)} "
@@ -8714,7 +8720,9 @@ def get_dsv41_engine(eng: Path, hip: bool, package: str | None = None, feed: str
     """The DeepSeek engine package next to the engine `eng`: one the person gave (--dsv41-package) or put in engine-dsv41/ by hand, else downloaded from
     the signed feed `feed` (--feed; else QUCHEN_UPDATE_FEED, a remembered https feed, or the release's).  Checked first either way; its
     quchen-dsv41, or None when it cannot be had."""
+    global DSV41_MISSING_HINT
     from quchen_control import dsv41_engine
+    DSV41_MISSING_HINT = ""
     root = dsv41_engine_dir(eng)
     if package:
         exe = dsv41_engine.install_package(root, package, emit=lambda m: say("  " + m))
@@ -8736,8 +8744,11 @@ def get_dsv41_engine(eng: Path, hip: bool, package: str | None = None, feed: str
         hw = {**updater.detect_hardware(), "backend": "hip", "backend_source": "requested"}
         if archs:                                          # the package is chosen for the cards this model runs on, not for every card in the PC
             hw["gfx"] = sorted({str(x) for x in archs})
-    exe = dsv41_engine.install(root, source, hardware=hw, emit=lambda m: say("  " + m))
+    report = {}
+    exe = dsv41_engine.install(root, source, hardware=hw, emit=lambda m: say("  " + m), report=report)
     if exe is None:
+        from quchen_control import feed as _feedmod
+        DSV41_MISSING_HINT = _feedmod.driver_update_hint(report.get("engines") or [], report.get("hardware") or {}) or ""
         warn("no DeepSeek engine package could be fetched (see above)")
     return exe
 
@@ -8759,6 +8770,30 @@ def upgrade_dsv41_engine(eng: Path, exe: Path, feed: str | None = None) -> Path:
     return new or exe
 
 
+def dsv41_in_engine_components() -> Path | None:
+    """A quchen-dsv41[.exe] that one of the app's installed engine packages carries, newest first, or None.
+
+    The Windows CUDA 13 engine package and the Linux CUDA 13 / rx9070 packages carry the DeepSeek engine inside them
+    (packaging/ENGINE-COMPONENT.md); Control installs those under QUCHEN_COMPONENTS_DIR/engine/<version>-<platform>-<backend>[-<variant>]/.
+    Setup runs in the app's installer environment, which names that folder, so DeepSeek is found there when the separate dsv41
+    package is not in the feed. A Terminal or a source checkout has no such folder and keeps the old behaviour."""
+    from quchen_control import dsv41_engine
+    root = (os.environ.get("QUCHEN_COMPONENTS_DIR") or "").strip()
+    if not root and WIN:                                     # the same rule as quchen_control/engine_component.py components_dir()
+        root = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local"), "QuChen", "components")
+    if not root:
+        return None
+    name = dsv41_engine.exe_name()
+    try:
+        found = [d / name for d in (Path(root) / "engine").iterdir() if d.is_dir() and (d / name).is_file()]
+    except OSError:
+        return None
+    # The newest package that carries it; among one version, the CUDA 13 build first: that is the one DeepSeek needs (its
+    # cards' own code), and an older CUDA 12 package does not carry it at all.
+    found.sort(key=lambda p: ("cuda13" in p.parent.name, dsv41_engine.version_key(p.parent.name)), reverse=True)
+    return found[0] if found else None
+
+
 def dsv41_exe(eng: Path) -> Path | None:
     """The DeepSeek-V4.1 engine (quchen-dsv41): QUCHEN_DSV41_EXE (a build of your own), else its own package folder beside the engine (engine-dsv41/),
     else beside the engine in `eng` (an older all-in-one package); None when there is none."""
@@ -8768,6 +8803,10 @@ def dsv41_exe(eng: Path) -> Path | None:
     name = "quchen-dsv41.exe" if WIN else "quchen-dsv41"
     from quchen_control import dsv41_engine
     exe = dsv41_engine.find(dsv41_engine_dir(eng)) or (Path(eng) / name)
+    if not exe.is_file():
+        carried = dsv41_in_engine_components()                         # the app's engine package may carry it inside (Windows cuda13)
+        if carried is not None:
+            exe = carried
     if exe.is_file() and not WIN and not os.access(exe, os.X_OK):      # a package copied without its modes (scp / tar from Windows): fix it, do not stop
         try:
             exe.chmod(0o755)
@@ -9376,12 +9415,16 @@ def install_dsv41(a, family, gpu, hip, amd, cuda_tk, multi, port, ram, adopted, 
         if os.environ.get("QUCHEN_VERBOSE") == "1" or "--verbose" in sys.argv:
             say("  Details for developers: build it with cmake -DQUCHEN_BUILD_DSV41=ON -DCMAKE_CUDA_ARCHITECTURES=<your card: 86 RTX 30, 89 RTX 40, 120 RTX 50> "
                 "and point QUCHEN_DSV41_EXE at it (docs/DEEPSEEK41.md, \"Building the engine for your card\").")
+        cards = ("It runs on an Apple Silicon Mac with the Metal DeepSeek engine package from the QuChen update feed. " if mac else
+                 "Supported graphics cards: NVIDIA RTX 30, 40 and 50 series, the Radeon AI PRO R9700, and a Ryzen AI Max (Strix Halo) on "
+                 "Windows with the AMD DeepSeek engine package. "
+                 + ("The DGX Spark (GB10) builds its own: spark/build_engine.sh puts quchen-dsv41 beside the engine (docs/DGX_SPARK_LINUX.md). "
+                    if is_arm64() else ""))
+        # When the reason is known (the driver this PC needs for the engine package), say it first: the card list would tell
+        # an RTX 50 owner their card is unsupported, though only the driver is too old.
+        lead = (DSV41_MISSING_HINT + " ") if DSV41_MISSING_HINT else cards
         fail("DeepSeek's engine is not available for this computer yet",
-             ("It runs on an Apple Silicon Mac with the Metal DeepSeek engine package from the QuChen update feed. " if mac else
-              "Supported graphics cards: NVIDIA RTX 30, 40 and 50 series, the Radeon AI PRO R9700, and a Ryzen AI Max (Strix Halo) on "
-              "Windows with the AMD DeepSeek engine package. "
-              + ("The DGX Spark (GB10) builds its own: spark/build_engine.sh puts quchen-dsv41 beside the engine (docs/DGX_SPARK_LINUX.md). "
-                 if is_arm64() else "")) + dsv41_manual_steps(eng)
+             lead + dsv41_manual_steps(eng)
              + " Or update QuChen later (a newer version may add your card), pick another model, or build the engine for your card yourself "
              "(docs/DEEPSEEK41.md, \"Building the engine for your card\"). Nothing has been downloaded.")
     ok(f"engine: {exe}")

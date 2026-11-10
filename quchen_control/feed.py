@@ -431,6 +431,37 @@ def engine_fit_reasons(pkg: EnginePackage, hardware: dict) -> list[str]:
     return reasons
 
 
+def driver_only_missing(pkg: EnginePackage, hardware: dict) -> bool:
+    """True when nothing but the NVIDIA driver keeps `pkg` from this PC: same platform and backend, the card's code is
+    covered, and every other reason `engine_fit_reasons` gives is absent."""
+    from quchen_control import engine_component as ec
+    need, have = pkg.min_driver.get("nvidia"), hardware.get("nvidia_driver")
+    if pkg.backend != "cuda" or pkg.platform != hardware.get("platform") or not need or not have:
+        return False
+    if ec._version_key(have) >= ec._version_key(need):
+        return False
+    return not [r for r in engine_fit_reasons(pkg, hardware) if "NVIDIA driver" not in r]
+
+
+def driver_update_hint(packages, hardware: dict) -> str | None:
+    """One plain sentence when the engine this PC would run is held back only by its NVIDIA driver, else None.
+
+    This is the difference between "not available for this computer" and the truth: an RTX 50 card is supported by the
+    CUDA 13 build, which needs a newer driver than the one installed. The caller puts the sentence in front of the user
+    instead of a list of cards."""
+    from quchen_control import engine_component as ec
+    held = [p for p in packages or () if driver_only_missing(p, hardware)]
+    if not held:
+        return None
+    pkg = max(held, key=lambda p: (version_key(p.version), ec._version_key(p.min_driver.get("nvidia", "0"))))
+    need, have = pkg.min_driver["nvidia"], hardware.get("nvidia_driver")
+    cards = ", ".join(str(a) for a in hardware.get("cuda_archs") or () if a)
+    for_what = f" for this PC's graphics card ({cards})" if cards else ""
+    return (f"The engine{for_what} needs NVIDIA driver {need} or newer, and this PC has {have}. "
+            "Update the NVIDIA driver from https://www.nvidia.com/Download/index.aspx and run this again; "
+            "nothing has been changed.")
+
+
 def select_engine(packages, hardware: dict) -> tuple[EnginePackage | None, list[str]]:
     """The best package for this PC and, when none fits, every reason. Best = newest version; with equal versions the build
     that needs the newer driver (CUDA 13 beside CUDA 12), as `engine_component.resolve` chooses between installed ones."""
@@ -456,8 +487,17 @@ def select_engine(packages, hardware: dict) -> tuple[EnginePackage | None, list[
         # be given CUDA 13 because ANOTHER card in the PC fits it. The same version of the build that runs here is kept when the feed has it.
         same = [p for p in fitting if p.backend == "cuda" and p.variant == kept and version_key(p.version) == version_key(best.version)]
         if same:
-            reasons.append(f"the installed {kept} build is kept; {best.variant} would also fit another card in this PC")
-            best = same[0]
+            mine = hardware.get("cuda_archs") or []
+            kept_native = ec.arch_native(same[0].archs, mine)
+            best_native = ec.arch_native(best.archs, mine)
+            if kept_native or not best_native:
+                reasons.append(f"the installed {kept} build is kept; {best.variant} would also fit another card in this PC")
+                best = same[0]
+            else:
+                # The installed build runs this card only as PTX (an RTX 50 card on the CUDA 12 build, whose newest code image is sm_89) and
+                # the other build has this card's own machine code: the native build is taken, though it is a build switch. It is faster, and it
+                # is the one that carries the DeepSeek engine (quchen-dsv41); the CUDA 12 package has no quchen-dsv41.
+                reasons.append(f"the installed {kept} build runs this card through PTX; {best.variant} has its own code for it and is taken")
     return best, reasons
 
 
