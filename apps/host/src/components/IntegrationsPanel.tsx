@@ -161,7 +161,7 @@ export function IntegrationsPanel() {
                   </div>
                 : null}
             {v?.progress?.phase === 'error' ? <p className="small inline-error">{v.progress.message}</p> : null}
-            <p className="small muted" style={{ margin: '6px 0 0' }}>{tr('只有需要访问 GitHub 时才用；不装也不影响聊天和网关。下载失败时，可以用「从本地文件…」选一个 QuChenVPN 安装包。')}</p>
+            <p className="small muted" style={{ margin: '6px 0 0' }}>{tr('只有需要访问 GitHub 时才用；不装也不影响聊天和网关。装的是免安装包，落在 QuChen 自己的目录里；下载失败时可以用「从本地文件…」选 QuChenVPN 的 zip 或 exe。')}</p>
             <input ref={file} type="file" accept=".zip,.exe" hidden onChange={(e) => { const picked = e.target.files?.[0]; if (!picked) return; void upload(picked); e.target.value = ''; }}/>
         </section>
 
