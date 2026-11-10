@@ -11,9 +11,9 @@
  *
  * Every write is behind a passcode.
  */
-import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { createConnection } from 'node:net';
 // Written at build time from a repository secret: the owner's key, shipped so the gateway works out of the box.
@@ -324,27 +324,52 @@ export async function gatewayAction(action, dir) {
 
 
 /* ------------------------------------------------------------------ vpn --- */
-// The owner's own network tool (QuChen-VPN, mihomo based). Optional: QuChen only downloads it, starts it
-// and stops it; nothing here talks to a proxy itself.
+// The owner's own network tool (QuChen-VPN, mihomo based). Optional: QuChen only installs it,
+// starts it and stops it; nothing here talks to a proxy itself.
+//
+// QuChen-VPN publishes two shapes now: QuChenVPN-win64.zip (portable, and the shape its own in-app
+// updater mirrors in place) and QuChenVPN-Setup.exe (Inno Setup). The portable zip is what we
+// install by default: no elevation, it lands in vpnHome() where this app owns it, and the app's own
+// updater keeps working because it rewrites its own folder. Setup.exe is only the fallback, and it
+// is pointed at the same folder so both routes end in one place.
 
 const VPN_REPO = 'quchenace/QuChen-VPN';
+const VPN_KEEP_DIRS = ['data', 'logs'];          // the app's own state: an install never wipes these
+const VPN_KEEP_FILES = ['settings.json'];
 
 export function vpnHome() {
   return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'QuChen', 'tools', 'QuChenVPN');
 }
 
-/** Where the app can be: the folder a zip was unpacked into, or the per-user / machine install the setup made. */
+/** Where the app can be: the folder we unpacked into, or the per-user / machine install a setup made. */
 function vpnDirs() {
   const local = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local');
   return [vpnHome(), join(local, 'Programs', 'QuChen VPN'), join(process.env.ProgramFiles || 'C:/Program Files', 'QuChen VPN')];
 }
 
+/**
+ * Find QuChenVPN.exe, two levels deep: the release zip is built with includeBaseDirectory=true, so
+ * an unzipped copy keeps its exe under QuChenVPN\QuChenVPN.exe unless the install flattens it.
+ */
+function findExe(dir, depth = 0) {
+  try {
+    const items = readdirSync(dir, { withFileTypes: true });
+    const hit = items.find((x) => x.isFile() && /^QuChenVPN.*\.exe$/i.test(x.name));
+    if (hit) return join(dir, hit.name);
+    if (depth >= 2) return null;
+    for (const x of items) {
+      if (!x.isDirectory()) continue;
+      const sub = findExe(join(dir, x.name), depth + 1);
+      if (sub) return sub;
+    }
+  } catch { /* next */ }
+  return null;
+}
+
 function vpnExe() {
   for (const dir of vpnDirs()) {
-    try {
-      const hit = readdirSync(dir).find((f) => /^QuChenVPN.*\.exe$/i.test(f));
-      if (hit) return join(dir, hit);
-    } catch { /* next */ }
+    const hit = findExe(dir);
+    if (hit) return hit;
   }
   return null;
 }
@@ -359,49 +384,117 @@ function vpnRunning() {
 
 export async function vpnStatus() {
   const exe = vpnExe();
-  return { dir: exe ? join(exe, '..') : vpnHome(), installed: !!exe, exe, running: await vpnRunning(), progress: vpnProgress };
+  return { dir: exe ? dirname(exe) : vpnHome(), installed: !!exe, exe, running: await vpnRunning(), progress: vpnProgress };
+}
+
+/** The release metadata: direct first, then through the system proxy (a plain fetch ignores it). */
+async function vpnRelease() {
+  const url = 'https://api.github.com/repos/' + VPN_REPO + '/releases/latest';
+  try {
+    const res = await fetch(url, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'quchen' }, signal: AbortSignal.timeout(15000) });
+    if (res.ok) return await res.json();
+  } catch { /* blocked without a proxy: retried below */ }
+  const file = join(tmpdir(), 'quchen-vpn-release.json');
+  await downloadWithProxy(url, file);
+  try { return JSON.parse(readFileSync(file, 'utf8')); } finally { try { rmSync(file, { force: true }); } catch { /* stays */ } }
+}
+
+/** Fetch one asset: direct first, the system proxy as the fallback. Gives up on a short file. */
+async function vpnFetchAsset(url, file, total, message) {
+  const direct = async () => {
+    const res = await fetch(url, { headers: { 'user-agent': 'quchen' }, signal: AbortSignal.timeout(1800000) });
+    if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+    const size = Number(res.headers.get('content-length') || total || 0);
+    let done = 0;
+    const reader = res.body.getReader();
+    rmSync(file, { force: true });
+    for (;;) {
+      const { value, done: end } = await reader.read();
+      if (end) break;
+      appendFileSync(file, Buffer.from(value));
+      done += value.length;
+      vpnProgress = { phase: 'downloading', done, total: size, message };
+    }
+  };
+  rmSync(file, { force: true });
+  try {
+    await direct();
+  } catch (e) {
+    rmSync(file, { force: true });
+    vpnProgress = { phase: 'downloading', done: 0, total: total || 0, message: '直连不通，改用系统代理…' };
+    await downloadWithProxy(url, file);
+  }
+  const size = existsSync(file) ? statSync(file).size : 0;
+  if (!size) throw new Error('下载失败：没有拿到文件。先让 QuChen VPN 连上，再试一次。');
+  if (total && size < total * 0.98) throw new Error('下载不完整（' + Math.round(size / 1048576) + ' / ' + Math.round(total / 1048576) + ' MB），重试一次。');
+  return size;
+}
+
+/** Unpack a release zip into dir, mirroring over an older copy but keeping the app's own state. */
+async function vpnUnpack(zipFile, dir) {
+  const tmp = join(tmpdir(), 'quchen-vpn-unpack-' + Date.now());
+  mkdirSync(tmp, { recursive: true });
+  vpnProgress = { ...vpnProgress, phase: 'unpacking', message: '正在解压…' };
+  await new Promise((resolve, reject) => execFile('powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-Command',
+      "$ProgressPreference='SilentlyContinue'; Expand-Archive -LiteralPath '" + zipFile + "' -DestinationPath '" + tmp + "' -Force"],
+    { windowsHide: true }, (e) => (e ? reject(new Error('解压失败：' + e.message)) : resolve(null))));
+  let from = tmp;
+  const items = readdirSync(tmp, { withFileTypes: true });
+  if (items.length === 1 && items[0].isDirectory()) {
+    const inner = join(tmp, items[0].name);
+    if (findExe(inner)) from = inner;
+  }
+  // robocopy /MIR: old files the new build no longer ships are removed, instead of lingering.
+  await new Promise((resolve, reject) => execFile('robocopy.exe',
+    [from, dir, '/MIR', '/XF', ...VPN_KEEP_FILES, '/XD', ...VPN_KEEP_DIRS, '/NFL', '/NDL', '/NJH', '/NJS', '/NP'],
+    { windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (e) => {
+      const code = e && typeof e.code === 'number' ? e.code : (e ? 16 : 0);
+      if (code < 8) resolve(null); else reject(new Error('写入 ' + dir + ' 失败（robocopy ' + code + '）'));
+    }));
+  try { rmSync(tmp, { recursive: true, force: true }); } catch { /* stays */ }
+}
+
+/** A setup runs silently into the folder we manage, never into Program Files behind a UAC prompt. */
+function vpnRunSetup(file, dir) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(file, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOCANCEL', '/NOICONS', '/CURRENTUSER', '/DIR="' + dir + '"'], { windowsHide: true });
+    child.on('error', reject);
+    child.on('exit', (code) => (code === 0 ? resolve(null) : reject(new Error('安装程序返回 ' + code))));
+  });
 }
 
 export async function vpnInstall() {
   vpnProgress = { phase: 'resolving', done: 0, total: 0, message: '正在查询最新版本…' };
   try {
-    const rel = await (await fetch('https://api.github.com/repos/' + VPN_REPO + '/releases/latest', {
-      headers: { accept: 'application/vnd.github+json', 'user-agent': 'quchen' }, signal: AbortSignal.timeout(20000),
-    })).json();
-    const assets = rel.assets ?? [];
-    const setup = assets.find((a) => /setup\.exe$/i.test(a.name));
+    const rel = await vpnRelease();
+    const assets = (rel.assets ?? []).filter((a) => a?.name && a?.browser_download_url);
     const zip = assets.find((a) => /\.zip$/i.test(a.name));
-    const asset = setup ?? zip;
-    if (!asset) throw new Error('作者还没有发布安装包（Release 里没有 Setup.exe 或 zip）。');
+    const setup = assets.find((a) => /setup\.exe$/i.test(a.name));
+    const asset = zip ?? setup;
+    if (!asset) throw new Error('作者还没有发布安装包（Release 里没有 zip 或 Setup.exe）。');
 
     const dir = vpnHome();
     mkdirSync(dir, { recursive: true });
-    const file = join(dir, asset.name);
-    vpnProgress = { phase: 'downloading', done: 0, total: asset.size ?? 0, message: '正在下载 ' + asset.name + '（约 ' + Math.round((asset.size ?? 0) / 1048576) + ' MB）…' };
-    try {
-      // Through the system proxy, so a running VPN makes this work where a plain fetch cannot.
-      await downloadWithProxy(asset.browser_download_url, file);
-    } catch (e) {
-      throw new Error('下载失败：这台电脑到不了 GitHub 的下载服务器（' + (e && e.message ? e.message : 'network') + '）。先打开 QuChen VPN 再试，或用「从本地文件…」选安装包。');
+    // A running copy holds its own exe and DLLs: stop it first, gracefully, so it can drop the proxy.
+    if (await vpnRunning()) {
+      vpnProgress = { phase: 'installing', done: 0, total: 0, message: '先关掉正在运行的 QuChen VPN…' };
+      await vpnStop();
     }
-    vpnProgress = { phase: 'installing', done: asset.size ?? 0, total: asset.size ?? 0, message: '正在安装…' };
+    vpnProgress = { phase: 'downloading', done: 0, total: asset.size ?? 0, message: '正在下载 ' + asset.name + (asset.size ? '（约 ' + Math.round(asset.size / 1048576) + ' MB）' : '') };
+    const file = join(tmpdir(), asset.name);
+    const size = await vpnFetchAsset(asset.browser_download_url, file, asset.size ?? 0, vpnProgress.message);
 
-    if (setup) {
-      await new Promise((resolve, reject) => {
-        const child = spawn(file, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOCANCEL', '/MERGETASKS=!desktopicon'], { windowsHide: true });
-        child.on('error', reject);
-        child.on('exit', (code) => (code === 0 ? resolve(null) : reject(new Error('安装程序返回 ' + code))));
-      });
-      try { rmSync(file, { force: true }); } catch { /* stays */ }
-      await sleep(1200);
-    } else {
-      await new Promise((resolve, reject) => execFile('powershell.exe',
-        ['-NoProfile', '-Command', "Expand-Archive -LiteralPath '" + file + "' -DestinationPath '" + dir + "' -Force"],
-        { windowsHide: true }, (e) => (e ? reject(new Error('解压失败：' + e.message)) : resolve(null))));
-      try { rmSync(file, { force: true }); } catch { /* stays */ }
-    }
-    vpnProgress = { phase: 'done', done: asset.size ?? 0, total: asset.size ?? 0, message: '安装完成' };
-    return vpnStatus();
+    vpnProgress = { phase: 'installing', done: size, total: asset.size ?? size, message: '正在安装…' };
+    if (asset === zip) await vpnUnpack(file, dir);
+    else await vpnRunSetup(file, dir);
+    try { rmSync(file, { force: true }); } catch { /* stays */ }
+    await sleep(1200);
+
+    const st = await vpnStatus();
+    if (!st.installed) throw new Error('装完了，但在 ' + dir + ' 里没找到 QuChenVPN.exe（Release 里的包结构可能变了）。');
+    vpnProgress = { phase: 'done', done: size, total: asset.size ?? size, message: '安装完成' };
+    return { ...st, progress: vpnProgress };
   } catch (e) {
     vpnProgress = { ...vpnProgress, phase: 'error', message: e.message };
     throw e;
@@ -413,29 +506,51 @@ export async function vpnInstallFromFile(bytes, name) {
   const dir = vpnHome();
   mkdirSync(dir, { recursive: true });
   const safe = String(name || 'QuChenVPN.zip').replace(/[^\w.\-\u4e00-\u9fa5]/g, '_');
-  const file = join(dir, safe);
+  const file = join(tmpdir(), safe);
   writeFileSync(file, bytes);
-  if (/\.zip$/i.test(safe)) {
-    await new Promise((resolve, reject) => execFile('powershell.exe',
-      ['-NoProfile', '-Command', "Expand-Archive -LiteralPath '" + file + "' -DestinationPath '" + dir + "' -Force"],
-      { windowsHide: true }, (e) => (e ? reject(new Error('解压失败：' + e.message)) : resolve(null))));
+  try {
+    if (await vpnRunning()) await vpnStop();
+    if (/\.zip$/i.test(safe)) {
+      await vpnUnpack(file, dir);
+    } else if (/\.exe$/i.test(safe)) {
+      vpnProgress = { ...vpnProgress, phase: 'installing', message: '正在安装…' };
+      await vpnRunSetup(file, dir);
+      await sleep(1200);
+    } else {
+      throw new Error('只支持 .zip 或 .exe。');
+    }
+  } finally {
     try { rmSync(file, { force: true }); } catch { /* stays */ }
   }
-  return vpnStatus();
+  const st = await vpnStatus();
+  if (!st.installed) throw new Error('装完了，但没找到 QuChenVPN.exe。');
+  vpnProgress = { ...vpnProgress, phase: 'done', message: '安装完成' };
+  return { ...st, progress: vpnProgress };
 }
 
 export async function vpnStart() {
-  const { exe } = await vpnStatus();
-  if (!exe) throw new Error('先安装 QuChen VPN。');
-  spawn(exe, [], { cwd: vpnHome(), detached: true, stdio: 'ignore' }).unref();
-  await sleep(800);
+  const st = await vpnStatus();
+  if (!st.exe) throw new Error('先安装 QuChen VPN。');
+  if (st.running) return st;
+  // cwd is the exe's own folder: it loads web/, assets/ and runtime/ from there, wherever it lives.
+  spawn(st.exe, [], { cwd: dirname(st.exe), detached: true, stdio: 'ignore' }).unref();
+  await sleep(900);
   return vpnStatus();
 }
 
 export async function vpnStop() {
+  if (!(await vpnRunning())) return vpnStatus();
+  // Ask it to close first: its own shutdown puts the system proxy back. Killing it outright would
+  // leave the proxy pointing at a kernel that is gone, and the whole machine would lose its network.
+  await new Promise((resolve) => execFile('taskkill.exe', ['/IM', 'QuChenVPN.exe', '/T'], { windowsHide: true }, () => resolve(null)));
+  for (let i = 0; i < 12; i++) {
+    await sleep(500);
+    if (!(await vpnRunning())) return vpnStatus();
+  }
   await new Promise((resolve) => execFile('taskkill.exe', ['/IM', 'QuChenVPN.exe', '/T', '/F'], { windowsHide: true }, () => resolve(null)));
   await sleep(600);
-  return vpnStatus();
+  const st = await vpnStatus();
+  return { ...st, progress: { phase: 'idle', done: 0, total: 0, message: '已强制结束；系统代理若没恢复，再启动一次 QuChen VPN 让它自己还原。' } };
 }
 
 /* ---------------------------------------------------------------- writing --- */
