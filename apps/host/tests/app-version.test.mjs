@@ -15,6 +15,20 @@ test('the shell passes the version; a bad value is ignored', () => {
   assert.equal(appVersionFrom({ env: {}, here: '/nowhere/a/b' }), 'dev');
 });
 
+test('every place that carries the app version carries the same one', async () => {
+  const desktop = join(here, '..', '..', 'desktop');
+  const cargo = /^version\s*=\s*"([^"]+)"/m.exec(await readFile(join(desktop, 'src-tauri', 'Cargo.toml'), 'utf8'))[1];
+  const desktopPkg = JSON.parse(await readFile(join(desktop, 'package.json'), 'utf8')).version;
+  const hostPkg = JSON.parse(await readFile(join(here, '..', 'package.json'), 'utf8')).version;
+  const lock = await readFile(join(desktop, 'src-tauri', 'Cargo.lock'), 'utf8');
+  // Cargo.lock pins the crate's own version too: it is the one file nobody remembers to bump, so it is
+  // the one this test exists for (it read 0.2.11 through three releases).
+  const locked = /\[\[package\]\]\nname = "quchen-desktop"\nversion = "([^"]+)"/.exec(lock)?.[1];
+  assert.equal(cargo, desktopPkg, 'Cargo.toml and the desktop package');
+  assert.equal(hostPkg, desktopPkg, 'the host reports the version the installer was built with');
+  assert.equal(locked, desktopPkg, 'Cargo.lock agrees, so the release does not ship two versions');
+});
+
 test('in a checkout the same file the shell is built from is read, so there is one source', async () => {
   const toml = await readFile(join(here, '..', '..', 'desktop', 'src-tauri', 'Cargo.toml'), 'utf8');
   const declared = /^version\s*=\s*"([^"]+)"/m.exec(toml)[1];

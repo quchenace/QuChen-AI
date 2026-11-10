@@ -10,6 +10,7 @@ import { resolvePython, shellPrefix } from './python-resolver.mjs';
 import { chooseFolder, chooserUnavailable, typedFolder } from './folder-dialog.mjs';
 import { createLocalShare } from './local-share.mjs';
 import * as integrations from './integrations.mjs';
+import { bunStatus, ensureBun, ensureBunShared } from './bun-runtime.mjs';
 import { createTaskService, validateTask } from './tasks.mjs';
 import { createAgentTaskRunner } from './agent/task-run.mjs';
 import { migrateSetup } from './setup.mjs';
@@ -1430,7 +1431,7 @@ async function api(req, res, path, method, url) {
     await pipeline(req, createWriteStream(target, { mode: 0o600 }));
     return json(res, 202, native.operation('install-engine-file', { path: target }));
   }
-  if (path === '/api/updates/check' && method === 'GET' && control?.updateCheck) return json(res, 200, await checkComponentUpdates({ control, appUpdater, appVersion: process.env.QUCHEN_APP_VERSION || null }));
+  if (path === '/api/updates/check' && method === 'GET' && control?.updateCheck) return json(res, 200, await checkComponentUpdates({ control, appUpdater, appVersion: process.env.QUCHEN_APP_VERSION || null, releaseApi: true }));
   if (path === '/api/updates/check' && method === 'GET') return json(res, 200, await checkUpdates({ appVersion:appVersionToShow(setupState().app.version,native.state().version), engineVersion:native.state().available?(native.state().installed?.engine?.version??null):(await engine.config()).engine.version }));
 
   if (path === '/api/setup/step' && method === 'POST') {
@@ -1674,7 +1675,11 @@ async function api(req, res, path, method, url) {
   if (path === '/api/integrations/gateway' && method === 'POST') {
     const body = await readBody(req);
     if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
-    return json(res, 200, await integrations.gatewayAction(body?.action === 'stop' ? 'stop' : body?.action === 'status' ? 'status' : 'start', body?.dir));
+    // No folder from the request body: the gateway is started from a folder QuChen itself prepared (or
+    // from QUCHEN_GATEWAY_DIR), never from a path a local page can name. A posted "dir" used to become
+    // the working folder of a spawned litellm.exe, which is a code-execution path, not a preference.
+    const action = body?.action === 'stop' ? 'stop' : body?.action === 'status' ? 'status' : body?.action === 'refresh' ? 'refresh' : 'start';
+    return json(res, 200, await integrations.gatewayAction(action));
   }
   if (path === '/api/integrations/auto' && method === 'POST') {
     const body = await readBody(req);
@@ -1703,6 +1708,16 @@ async function api(req, res, path, method, url) {
     const name = String(req.headers['x-file-name'] ?? 'QuChenVPN.zip').slice(0, 120);
     const bytes = await readRaw(req, 512 * 1024 * 1024);
     return json(res, 200, await integrations.vpnInstallFromFile(bytes, name));
+  }
+  if (path === '/api/integrations/bun' && method === 'GET') return json(res, 200, bunStatus());
+  if (path === '/api/integrations/bun' && method === 'POST') {
+    const body = await readBody(req);
+    if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
+    try {
+      return json(res, 200, await ensureBunShared({ force: body?.force === true }));
+    } catch (e) {
+      return error(res, 500, e?.message ?? '准备 Bun 失败。');
+    }
   }
   if (path === '/api/integrations/pause' && method === 'POST') {
     const body = await readBody(req);
@@ -2403,8 +2418,29 @@ server.on('error', error => {
   process.exit(1);
 });
 integrations.startHarnessWatcher();
+
+/** Is the dsh-our-free-model plugin installed for a DSH profile on this PC? */
+function dshUsesFreeModel() {
+  const home = homedir();
+  const probes = [
+    join(home, '.dsh', 'profiles', 'desktop', 'node_modules', '@ebony-vinyl', 'dsh-our-free-model', 'package.json'),
+    join(home, '.dsh', 'profiles', 'default', 'node_modules', '@ebony-vinyl', 'dsh-our-free-model', 'package.json'),
+    join(home, '.dsh', 'our-free-model', 'settings.json'),
+  ];
+  return probes.some((p) => { try { return existsSync(p); } catch { return false; } });
+}
+
 server.listen(PORT, HOST, () => {
   if (process.send) process.send({ type: 'quchen-ready', port: PORT });
+  // A DSH the person opens themselves does not inherit QuChen's environment. The plugin's OpenCode lane
+  // needs a Bun, so publish the one QuChen can find to HKCU\Environment once, when the plugin is installed.
+  // A missing Bun is downloaded here (the npm mirror), once; the panel's Bun card can force it again.
+  setTimeout(() => {
+    if (!dshUsesFreeModel()) return;
+    ensureBunShared().then((got) => {
+      if (got.shared) console.log('[quchen] Bun shared with DSH: ' + got.path);
+    }).catch((e) => console.error('[quchen] Bun not shared: ' + (e?.message ?? e)));
+  }, 2500).unref?.();
   // Engines a lost owner left behind (an earlier crash, an older version): ended after a PID + start time + command-line check.
   if (control && process.env.QUCHEN_PACKAGED === '1') control.cleanup().catch(() => {});
 });

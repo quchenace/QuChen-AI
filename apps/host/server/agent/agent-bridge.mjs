@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { GatewayClient } from './gateway-client.mjs';
 import { HarnessProcess, resolveHarness, redact, stopStaleAgent } from './harness-runtime.mjs';
+import { bunEnv } from '../bun-runtime.mjs';
 import { StatusReporter } from './status.mjs';
 import { buildProfile, routeFor, MODE_PRESETS, modeOf, effortOf, localOutputBudget, compactionHeadroom } from './profile.mjs';
 import { TurnProjector, parseArguments as parseArgs } from './events.mjs';
@@ -221,7 +222,10 @@ export function createAgentBridge({ dataDir, componentsDir = null, bundledDir = 
     writeFileSync(patchFile, profile.patch);
     const workdir = join(root, 'run');
     const hp = new HarnessProcess({
-      harness: h, home, patchFile, cwd: workdir, env: profile.env, nodePath, logFile: join(root, 'harness.log'), pidFile: join(root, 'harness.pid'),
+      // `bunEnv()` is what makes the OpenCode free lane work at all: the plugin behind it sends that lane's
+      // inference through a real Bun process and answers nothing but "install Bun" without one. The names
+      // it looks for are OUR_FREE_MODEL_BUN and BUN_INSTALL; an explicit value in the profile still wins.
+      harness: h, home, patchFile, cwd: workdir, env: { ...bunEnv(), ...profile.env }, nodePath, logFile: join(root, 'harness.log'), pidFile: join(root, 'harness.pid'),
       onExit: exit => {
         log(`agent · the Harness process exited (code ${exit.code})`);
         if (rt?.hp === hp) { lastError = 'The agent process stopped.'; rt = null; }

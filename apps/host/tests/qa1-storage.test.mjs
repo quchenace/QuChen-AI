@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { nativeUnloadPlan } from '../server/storage-check.mjs';
@@ -52,10 +52,3 @@ test('item 8: "QuChen" in Settings is the app\'s version; QuChen Control\'s 0.1.
   assert.match(updates, /AboutVersions/);
 });
 
-test('Cargo.toml, tauri.conf.json and the desktop package agree on the app version the host reports', async () => {
-  const root = new URL('../../desktop/', import.meta.url);
-  const cargo = /^version\s*=\s*"([^"]+)"/m.exec(await readFile(new URL('src-tauri/Cargo.toml', root), 'utf8'))[1];
-  const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8')).version;
-  assert.equal(cargo, pkg);
-  assert.equal(cargo, '0.2.11');
-});

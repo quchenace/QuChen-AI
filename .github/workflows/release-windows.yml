@@ -91,15 +91,20 @@ jobs:
 
             更新说明
 
-            修复
-            1. 更新 QuChen 不再卸载 QuChen VPN：安装前只请求它正常退出，安装完成后 VPN 仍在，设置、节点池和系统代理都保留。
-               卸载 QuChen 时才会一并移除 VPN。
-            2. QuChen VPN 正以管理员身份运行、安装器关不掉时，明确提示并中止更新/卸载，
-               不再在运行中的 VPN 上覆盖文件，也不会把系统代理留在已经消失的内核端口上。
-            3. 发布 feed 的 sequence 从现有值递增，不再固定为 1。
+            新增与修复
+            1. 免费网关合并 dsh-our-free-model 插件：目录里的 76 家 provider / 507 个模型进入生成器；
+               DSH 运行时，插件自己的网关（127.0.0.1:8326）里的 OpenCode / Kilo / EAC / 账号渠道 / 路由组合
+               以 ofm/… 挂进 QuChen 网关（127.0.0.1:4000），不再只有 OpenRouter 那几条。
+            2. OpenCode 免费车道不再报"需要 Bun"：QuChen 找到或下载 Bun 后写入用户环境 OUR_FREE_MODEL_BUN，
+               单独启动的 DSH 也能找到；集成页新增 Bun 状态与"准备 Bun"按钮。
+            3. 下载 QuChen VPN 改用官方 Setup.exe（约 31 MB），下载前先测速，直连 / ghfast / gh-proxy / 系统代理
+               按实测速度排序，失败自动换下一个；慢线路不再拖满整个下载。
+            4. VPN 1.0.9：首次连接时同批节点取最低延迟（不是第一个回包），连接时自动从高延迟节点换到明显更快的；
+               刷新后保留 2400 条可用线路。
+            5. 版本一致性：Cargo.lock 同步 0.2.31（新增测试防止再漂移）；网关参考配置可复现（--check）；
+               测试残留的 apps/*.exe 与 gateway/.env 不再进入版本库。
 
-            包含 0.2.29 的修复：RTX 50 系列（如 RTX 5060）在 NVIDIA 驱动低于 580.65 时，安装 DeepSeek 会明确说明是驱动太旧，
-            并给出驱动下载地址；驱动满足后引擎会切换到原生 CUDA 13 构建（带 DeepSeek 引擎 quchen-dsv41）。
+            包含 0.2.30 的修复：更新 QuChen 不再卸载或关闭 VPN；卸载时才停止并移除；VPN 以管理员运行时交互式卸载会提示并中止。
           releaseDraft: false
           prerelease: false
           args: >-

@@ -9,8 +9,9 @@ type Harness = {
     localModels: string[]; gatewayModels: string[];
     autoSync: boolean; lastSync: string | null;
 };
-type Gateway = { dir: string; port: number; running: boolean; present: boolean; models: string[]; pid: number | null; log: string };
+type Gateway = { dir: string; port: number; running: boolean; present: boolean; models: string[]; pid: number | null; log: string; catalogue?: { models: number; providers: number; catalogue: string; catalogueProviders: number; skipped: number; keys: number } | null };
 type Vpn = { dir: string; installed: boolean; exe: string | null; running: boolean; progress: { phase: string; done: number; total: number; message: string } };
+type Bun = { found: boolean; path: string | null; version: string | null; managed: boolean; home: string };
 type Status = { harness: Harness; gateway: Gateway; vpn: Vpn };
 
 function Dot({ on }: { on: boolean }) {
@@ -32,6 +33,7 @@ function when(iso: string | null) {
  */
 export function IntegrationsPanel() {
     const [status, setStatus] = useState<Status | null>(null);
+    const [bun, setBun] = useState<Bun | null>(null);
     const [pending, setPending] = useState('');
     const [error, setError] = useState('');
     const [note, setNote] = useState('');
@@ -43,6 +45,7 @@ export function IntegrationsPanel() {
         try {
             const next = await api.get<Status>('/api/integrations');
             setStatus(next);
+            try { setBun(await api.get<Bun>('/api/integrations/bun')); } catch { /* older host */ }
             try { const serving = await api.get<{ pauseServing?: boolean }>('/api/serving'); setPaused(!!serving.pauseServing); } catch { /* older host */ }
         } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     }
@@ -98,6 +101,10 @@ export function IntegrationsPanel() {
             {g && g.present && g.models.length ? <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
                 {g.models.map((m) => <span key={m} className="small" style={{ border: '1px solid var(--line, #e5e7eb)', borderRadius: 999, padding: '1px 8px' }}>{m}</span>)}
             </div> : null}
+            {g?.catalogue ? <p className="small muted" style={{ margin: '6px 0 0' }}>
+                {tr('模型目录')} {g.catalogue.catalogue} · {tr('已启用')} {g.catalogue.providers} {tr('个上游')}
+                {g.catalogue.skipped ? ` · ${tr('其余')} ${g.catalogue.skipped} ${tr('个填了 key 就能用')}` : ''}
+            </p> : null}
             {g?.present ? <details style={{ marginTop: 8 }} open={showLog} onToggle={(e) => setShowLog((e.target as HTMLDetailsElement).open)}>
                 <summary className="small">{tr('日志')}</summary>
                 <pre className="small muted" style={{ maxHeight: 160, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{g?.log || '—'}</pre>
@@ -122,6 +129,28 @@ export function IntegrationsPanel() {
                 <Btn size="sm" icon="refresh" disabled={!ready || pending !== '' || (!h?.model && !(h?.gatewayModels.length ?? 0))}
                     onClick={() => void call('sync', '/api/integrations/harness', {}, tr('已写入 Harness 配置，重启 Harness 后生效。'))}>{tr('立即同步')}</Btn>
             </div>
+        </section>
+
+        <section className="st-card">
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                    <strong><Dot on={!!bun?.found}/>{'OpenCode 免费车道'}</strong>
+                    <span className="small muted">{bun?.found ? ` · Bun ${bun.version ?? ''}` : ' · 需要 Bun'}</span>
+                </div>
+                <div className="row">
+                    {bun?.found
+                        ? <Btn size="sm" variant="ghost" disabled={!ready || pending !== ''}
+                            onClick={() => void call('bun', '/api/integrations/bun', { force: true }, 'Bun 已重新准备。')}>{tr('重新准备')}</Btn>
+                        : <Btn size="sm" icon="download" disabled={!ready || pending !== ''}
+                            onClick={() => void call('bun', '/api/integrations/bun', {}, 'Bun 准备好了，重启助手后生效。')}>{pending === 'bun' ? tr('准备中…') : '准备 Bun'}</Btn>}
+                </div>
+            </div>
+            <p className="small muted" style={{ margin: '6px 0 0' }}>
+                {bun?.found
+                    ? <>{'插件的 OpenCode 免费车道把推理请求交给一个真正的 Bun 进程（上游会核对客户端指纹），QuChen 已把它接给助手：'} <code className="small">{bun.path}</code></>
+                    : <>{'没有 Bun 时，这条车道只会回一句「请安装 Bun」，它下面的模型全都用不了。点「准备 Bun」由 QuChen 从 npm 镜像下载官方二进制（约 55 MB，校验 SHA-256 后放进 '}
+                        <code className="small">{bun?.home ?? '本地目录'}</code>{'），并自动接给助手。'}</>}
+            </p>
         </section>
 
         <section className="st-card">
@@ -161,7 +190,7 @@ export function IntegrationsPanel() {
                   </div>
                 : null}
             {v?.progress?.phase === 'error' ? <p className="small inline-error">{v.progress.message}</p> : null}
-            <p className="small muted" style={{ margin: '6px 0 0' }}>{tr('只有需要访问 GitHub 时才用；不装也不影响聊天和网关。装的是免安装包，落在 QuChen 自己的目录里；下载失败时可以用「从本地文件…」选 QuChenVPN 的 zip 或 exe。')}</p>
+            <p className="small muted" style={{ margin: '6px 0 0' }}>{tr('只有需要访问 GitHub 时才用；不装也不影响聊天和网关。装的是官方安装包（静默、免管理员），落在 QuChen 自己的目录里；下载会先测一遍线路，挑最快的那个源。下载失败时可以用「从本地文件…」选 QuChenVPN 的 Setup.exe 或 zip。')}</p>
             <input ref={file} type="file" accept=".zip,.exe" hidden onChange={(e) => { const picked = e.target.files?.[0]; if (!picked) return; void upload(picked); e.target.value = ''; }}/>
         </section>
 

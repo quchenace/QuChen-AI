@@ -11,13 +11,17 @@
  *
  * Every write is behind a passcode.
  */
-import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, createReadStream, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { createConnection } from 'node:net';
 // Written at build time from a repository secret: the owner's key, shipped so the gateway works out of the box.
 import { DEFAULT_OPENROUTER_KEY } from './default-key.mjs';
+// The free-model catalogue of the dsh-our-free-model plugin, and the LiteLLM config built from it.
+import { buildGatewayConfig, describeGatewayConfig, freeModelCatalogue, parseEnv, envText } from './gateway-config.mjs';
+import { ofmModels, ofmStatus } from './ofm-gateway.mjs';
 
 export const PASSCODES = ['王朝玉', '姜俊涛', 'quchen'];
 
@@ -165,17 +169,9 @@ export function gatewayDir() {
   return gatewayHome();
 }
 
+/** `.env` -> object. The parser lives with the generator so both read a key the same way. */
 function envFile(dir) {
-  const out = {};
-  try {
-    for (const line of readFileSync(join(dir, '.env'), 'utf8').split(/\r?\n/)) {
-      const t = line.trim();
-      if (!t || t.startsWith('#') || !t.includes('=')) continue;
-      const i = t.indexOf('=');
-      out[t.slice(0, i).trim()] = t.slice(i + 1).trim().replace(/^["']|["']$/g, '');
-    }
-  } catch { /* no .env */ }
-  return out;
+  try { return parseEnv(readFileSync(join(dir, '.env'), 'utf8')); } catch { return {}; }
 }
 
 function gatewayKey() { return readSettings().gatewayKey || envFile(gatewayDir()).LITELLM_MASTER_KEY || 'Quchennb1'; }
@@ -186,6 +182,12 @@ function configuredGatewayModels() {
     const names = [...yaml.matchAll(/^\s*-\s*model_name:\s*["']?([^\s"'#]+)/gm)].map((m) => m[1]);
     return [...new Set(names)];
   } catch { return []; }
+}
+
+/** What the config on disk was built from: the plugin catalogue and how much of it is live. */
+function gatewayCatalogue(dir) {
+  const opts = { includeAll: process.env.QUCHEN_GATEWAY_ALL === '1' };
+  try { return describeGatewayConfig(envFile(dir), opts); } catch { return null; }
 }
 
 function logTail(lines = 12) {
@@ -204,6 +206,9 @@ export async function gatewayStatus() {
     dir, port: GATEWAY_PORT, running, home: gatewayHome(),
     present: existsSync(join(dir, '.venv', 'Scripts', 'litellm.exe')) || existsSync(join(dir, '.venv', 'Scripts', 'python.exe')),
     models: models.length ? models : configuredGatewayModels(),
+    catalogue: gatewayCatalogue(dir),
+    // The plugin's own gateway is a second upstream, not a catalogue: its models appear as ofm/<id>.
+    ofm: await ofmStatus({ cacheMs: 1500 }),
     pid: readSettings().gatewayPid ?? null,
     log: logTail(),
   };
@@ -212,8 +217,6 @@ export async function gatewayStatus() {
 /** The owner's key, published beside the release so the gateway works out of the box. */
 const KEY_URL = 'https://github.com/quchenace/QuChen-AI/releases/latest/download/quchen-gateway-key.txt';
 
-/** The keyless LiteLLM config QuChen writes when it sets the gateway up on this PC. */
-const GATEWAY_CONFIG = "# ============================================================\n#  QuChen 免费网关配置（内置）\n#  端点： http://127.0.0.1:4000/v1\n#  鉴权： Authorization: Bearer <LITELLM_MASTER_KEY>\n#\n#  两层模型名：\n#    · 每个上游一个名字（nemotron-3-ultra、cohere-north、flint …）—— 这样模型列表里能看到全部\n#    · 四个别名组（deepseek-v4.1-flash / -think / fast / zero）—— 组内自动挑可用的\n#  OpenRouter 需要免费账号的 key（.env 的 OPENROUTER_KEY_1）；Pollinations 完全免 key。\n# ============================================================\n\nmodel_list:\n  - model_name: nemotron-3-ultra\n    litellm_params:\n      model: openai/nvidia/nemotron-3-ultra-550b-a55b:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"OpenRouter · Nemotron-3 Ultra 550B\" }\n\n  - model_name: cohere-north\n    litellm_params:\n      model: openai/cohere/north-mini-code:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"OpenRouter · Cohere North Mini Code\" }\n\n  - model_name: nemotron-3-5-super-vl\n    litellm_params:\n      model: openai/nvidia/nemotron-3.5-super-vl:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"OpenRouter · Nemotron-3.5 Super VL\" }\n\n  - model_name: flint\n    litellm_params:\n      model: openai/recursive/flint-v1.0:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"OpenRouter · Flint v1.0\" }\n\n  - model_name: nemotron-nano-reasoning\n    litellm_params:\n      model: openai/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"OpenRouter · Nemotron-3 Nano 推理\" }\n\n  - model_name: gemma-4-31b\n    litellm_params:\n      model: openai/google/gemma-4-31b-it:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"OpenRouter · Gemma-4 31B（可能 429）\" }\n\n  - model_name: pollinations-fast\n    litellm_params:\n      model: openai/openai-fast\n      api_base: https://text.pollinations.ai/openai\n      api_key: dummy\n    model_info: { note: \"Pollinations · 免 key\" }\n\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/nvidia/nemotron-3-ultra-550b-a55b:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"组：主力\" }\n\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/cohere/north-mini-code:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"组：主力\" }\n\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/recursive/flint-v1.0:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"组：主力\" }\n\n  - model_name: deepseek-v4.1-flash\n    litellm_params:\n      model: openai/openai-fast\n      api_base: https://text.pollinations.ai/openai\n      api_key: dummy\n    model_info: { note: \"组：免 key 兜底\" }\n\n  - model_name: deepseek-v4.1-flash-think\n    litellm_params:\n      model: openai/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"组：推理\" }\n\n  - model_name: deepseek-v4.1-flash-think\n    litellm_params:\n      model: openai/google/gemma-4-31b-it:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"组：推理\" }\n\n  - model_name: fast\n    litellm_params:\n      model: openai/openai-fast\n      api_base: https://text.pollinations.ai/openai\n      api_key: dummy\n    model_info: { note: \"组：快\" }\n\n  - model_name: fast\n    litellm_params:\n      model: openai/cohere/north-mini-code:free\n      api_base: https://openrouter.ai/api/v1\n      api_key: os.environ/OPENROUTER_KEY_1\n    model_info: { note: \"组：快\" }\n\n  - model_name: zero\n    litellm_params:\n      model: openai/openai-fast\n      api_base: https://text.pollinations.ai/openai\n      api_key: dummy\n    model_info: { note: \"组：免 key\" }\n";
 
 /** The Python that ships with QuChen (it has pip), so no download is needed to build the gateway. */
 function bundledPython() {
@@ -239,7 +242,8 @@ function runCapture(exe, args, env) {
 
 /**
  * Set the free gateway up on this PC: a virtualenv next to QuChen's own data, LiteLLM inside it, and the
- * keyless config. Nothing is downloaded from GitHub, and the folder can be moved like any other.
+ * config built from the built-in endpoints plus the dsh-our-free-model catalogue. Nothing is downloaded
+ * from GitHub, and the folder can be moved like any other.
  */
 export async function gatewayInstall() {
   const home = gatewayHome();
@@ -247,7 +251,6 @@ export async function gatewayInstall() {
   const venv = join(home, '.venv');
   const py = bundledPython();
   const index = 'https://pypi.tuna.tsinghua.edu.cn/simple';
-  writeFileSync(join(home, 'litellm-config.yaml'), GATEWAY_CONFIG, 'utf8');
   // Carry any keys the person already configured in a checkout they had, so their setup keeps working.
   let shipped = DEFAULT_OPENROUTER_KEY;
   if (!shipped) {
@@ -256,15 +259,20 @@ export async function gatewayInstall() {
       if (r.ok) shipped = (await r.text()).trim();
     } catch { /* the keyless channels still work */ }
   }
-  let env = 'LITELLM_MASTER_KEY=Quchennb1\nOPENROUTER_KEY_1=' + shipped + '\n';
+  let envText = 'LITELLM_MASTER_KEY=Quchennb1\nOPENROUTER_KEY_1=' + shipped + '\n';
   for (const old of ['D:/工作区/unlimited-token', join(homedir(), '工作区', 'unlimited-token')]) {
     const f = join(old, '.env');
     if (existsSync(f)) {
       const theirs = readFileSync(f, 'utf8');
-      if (/OPENROUTER_KEY_1\s*=\s*\S/.test(theirs)) { env = theirs; break; }
+      if (/OPENROUTER_KEY_1\s*=\s*\S/.test(theirs)) { envText = theirs; break; }
     }
   }
-  writeFileSync(join(home, '.env'), env, 'utf8');
+  writeFileSync(join(home, '.env'), envText, 'utf8');
+  // The models follow the keys that are in that .env: a provider without a key is left out rather than
+  // written as a deployment that can only answer 401. The plugin's running gateway is a second upstream.
+  const ofm = await ofmModels({ force: true, timeoutMs: 2000 });
+  if (ofm.running && ofm.key) rememberOfmKey(home, ofm.key);
+  writeGatewayConfig(home, parseEnv(envText), { ofm });
   if (existsSync(join(venv, 'Scripts', 'litellm.exe'))) {
     writeSettings({ gatewayDir: home, gatewayInstalled: readSettings().gatewayInstalled ?? new Date().toISOString() });
     return gatewayStatus();
@@ -279,6 +287,39 @@ export async function gatewayInstall() {
   return gatewayStatus();
 }
 
+/**
+ * Write `litellm-config.yaml` for a gateway folder from the current .env. Called on install and on every
+ * start, so adding a key to .env (then restarting the gateway) is all it takes to gain that provider.
+ */
+export function writeGatewayConfig(home, env = parseEnv(existsSync(join(home, '.env')) ? readFileSync(join(home, '.env'), 'utf8') : ''), { ofm = null } = {}) {
+  const built = buildGatewayConfig(env, { includeAll: process.env.QUCHEN_GATEWAY_ALL === '1', ofm });
+  writeFileSync(join(home, 'litellm-config.yaml'), built.text, 'utf8');
+  writeSettings({ gatewayModels: built.models.length, gatewayProviders: built.providers.length, gatewayCatalogue: (freeModelCatalogue().source ?? {}).version ?? null });
+  return built;
+}
+
+/** Put (or refresh) the plugin gateway's key in the gateway .env, without touching the person's other keys. */
+function rememberOfmKey(dir, key) {
+  if (!key) return;
+  const file = join(dir, '.env');
+  const env = parseEnv(existsSync(file) ? readFileSync(file, 'utf8') : '');
+  if (env.OFM_GATEWAY_KEY === key) return;
+  env.OFM_GATEWAY_KEY = key;
+  writeFileSync(file, envText(env), { encoding: 'utf8', mode: 0o600 });
+}
+
+/** Write the generated config, but never over a file a person edited by hand. */
+const GENERATED_MARK = '由 apps/host/server/gateway-config.mjs 生成';
+function maybeWriteGatewayConfig(dir, ofm = null) {
+  const file = join(dir, 'litellm-config.yaml');
+  if (existsSync(file)) {
+    let text = '';
+    try { text = readFileSync(file, 'utf8'); } catch { return null; }
+    if (text && !text.includes(GENERATED_MARK)) return null;   // someone's own config: leave it alone
+  }
+  return writeGatewayConfig(dir, undefined, { ofm });
+}
+
 export async function gatewayStart() {
   if (await portOpen(GATEWAY_PORT)) return gatewayStatus();
   let dir = gatewayDir();
@@ -290,6 +331,13 @@ export async function gatewayStart() {
     exe = join(dir, '.venv', 'Scripts', 'litellm.exe');
     if (!existsSync(exe)) throw new Error('网关安装没有完成（找不到 ' + exe + '）。检查网络后点「安装」再试一次。');
   }
+  // A key added to .env since the last start turns into deployments here, and so does the plugin
+  // gateway if DSH is running: its lanes are not expressible as plain provider entries.
+  try {
+    const ofm = await ofmModels({ force: true, timeoutMs: 2500 });
+    if (ofm.running && ofm.key) rememberOfmKey(dir, ofm.key);
+    maybeWriteGatewayConfig(dir, ofm);
+  } catch { /* keep the file that is there */ }
   mkdirSync(DATA, { recursive: true });
   const fd = openSync(gatewayLog(), 'a');
   const env = { ...process.env, ...envFile(dir), PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', LITELLM_LOCAL_MODEL_COST_MAP: 'True' };
@@ -314,11 +362,21 @@ export async function gatewayStop() {
   return gatewayStatus();
 }
 
+/**
+ * Rebuild the config and restart the gateway, so a plugin gateway that started after QuChen's (or a key
+ * added to .env) is picked up without restarting QuChen.
+ */
+export async function gatewayRefresh() {
+  if (await portOpen(GATEWAY_PORT)) await gatewayStop();
+  return gatewayStart();
+}
+
 export async function gatewayAction(action, dir) {
   if (dir) writeSettings({ gatewayDir: dir });
   if (action === 'install') return gatewayInstall({ url: dir });
   if (action === 'start') return gatewayStart();
   if (action === 'stop') return gatewayStop();
+  if (action === 'refresh') return gatewayRefresh();
   return gatewayStatus();
 }
 
@@ -327,15 +385,17 @@ export async function gatewayAction(action, dir) {
 // The owner's own network tool (QuChen-VPN, mihomo based). Optional: QuChen only installs it,
 // starts it and stops it; nothing here talks to a proxy itself.
 //
-// QuChen-VPN publishes two shapes now: QuChenVPN-win64.zip (portable, and the shape its own in-app
-// updater mirrors in place) and QuChenVPN-Setup.exe (Inno Setup). The portable zip is what we
-// install by default: no elevation, it lands in vpnHome() where this app owns it, and the app's own
-// updater keeps working because it rewrites its own folder. Setup.exe is only the fallback, and it
-// is pointed at the same folder so both routes end in one place.
+// QuChen-VPN publishes two shapes: QuChenVPN-Setup.exe (Inno Setup, PrivilegesRequired=lowest, so no UAC
+// prompt) and QuChenVPN-win64.zip (portable, the shape its own in-app updater mirrors in place). The
+// installer is what we use: one silent run, it owns its uninstall entry, shortcuts and file list, and it
+// is pointed at vpnHome() so the app still owns the folder. The zip stays as the fallback for an older
+// release that has no Setup.exe.
 
 const VPN_REPO = 'quchenace/QuChen-VPN';
 const VPN_KEEP_DIRS = ['data', 'logs'];          // the app's own state: an install never wipes these
-const VPN_KEEP_FILES = ['settings.json'];
+// settings.json is the app's own state; unins* is the installer's uninstall entry, which a mirror copy
+// from a zip must not delete or "Apps & features" would keep pointing at a file that is gone.
+const VPN_KEEP_FILES = ['settings.json', 'unins*'];
 
 export function vpnHome() {
   return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'QuChen', 'tools', 'QuChenVPN');
@@ -399,35 +459,97 @@ async function vpnRelease() {
   try { return JSON.parse(readFileSync(file, 'utf8')); } finally { try { rmSync(file, { force: true }); } catch { /* stays */ } }
 }
 
-/** Fetch one asset: direct first, the system proxy as the fallback. Gives up on a short file. */
-async function vpnFetchAsset(url, file, total, message) {
-  const direct = async () => {
-    const res = await fetch(url, { headers: { 'user-agent': 'quchen' }, signal: AbortSignal.timeout(1800000) });
-    if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
-    const size = Number(res.headers.get('content-length') || total || 0);
-    let done = 0;
-    const reader = res.body.getReader();
-    rmSync(file, { force: true });
-    for (;;) {
-      const { value, done: end } = await reader.read();
-      if (end) break;
-      appendFileSync(file, Buffer.from(value));
-      done += value.length;
-      vpnProgress = { phase: 'downloading', done, total: size, message };
-    }
-  };
-  rmSync(file, { force: true });
+/**
+ * Whether a candidate can actually move bytes, measured instead of assumed: 256 KB of the real asset,
+ * timed. A relay that is not reachable answers nothing in about a second, and a slow one is ranked
+ * behind a fast one instead of being found out halfway through a 160 MB download.
+ */
+async function probeSpeed(url, budget = 7000) {
+  const started = Date.now();
   try {
-    await direct();
-  } catch (e) {
-    rmSync(file, { force: true });
-    vpnProgress = { phase: 'downloading', done: 0, total: total || 0, message: '直连不通，改用系统代理…' };
-    await downloadWithProxy(url, file);
+    const res = await fetch(url, {
+      headers: { 'user-agent': 'quchen', range: 'bytes=0-262143' },
+      signal: AbortSignal.timeout(budget),
+    });
+    if (!res.ok && res.status !== 206) { try { await res.body?.cancel(); } catch { /* gone */ } return null; }
+    let bytes = 0;
+    try {
+      for await (const chunk of res.body) {
+        bytes += chunk.length;
+        if (bytes >= 262144) break;
+      }
+    } catch { /* a short read still says something about latency */ }
+    try { await res.body?.cancel(); } catch { /* gone */ }
+    if (!bytes) return null;
+    const ms = Math.max(1, Date.now() - started);
+    return { bps: (bytes / ms) * 1000, ms, bytes };
+  } catch { return null; }
+}
+
+/** GitHub release assets, then the relays people in CN actually get through. */
+const GH_MIRRORS = [
+  { prefix: 'https://ghfast.top/', label: '镜像 ghfast' },
+  { prefix: 'https://gh-proxy.com/', label: '镜像 gh-proxy' },
+];
+
+/**
+ * Every address worth trying, fastest measured first, then the ones that did not answer the probe, and
+ * the system proxy last (it is what the VPN itself provides, so it is there when nothing else is).
+ */
+async function assetCandidates(url) {
+  const list = [{ url, label: '直连' }, ...GH_MIRRORS.map((m) => ({ url: m.prefix + url, label: m.label }))];
+  const probed = await Promise.all(list.map(async (c) => ({ ...c, speed: await probeSpeed(c.url) })));
+  const fast = probed.filter((c) => c.speed).sort((a, b) => b.speed.bps - a.speed.bps);
+  const slow = probed.filter((c) => !c.speed);
+  const order = [...fast, ...slow];
+  if (order.length) vpnProgress = { ...vpnProgress, message: vpnProgress.message + ' · 走 ' + order[0].label };
+  order.push({ url: null, label: '系统代理' });
+  return order;
+}
+
+/** One candidate, streamed to disk with live progress. Throws when it cannot be finished. */
+async function streamAsset(url, file, total, message) {
+  const res = await fetch(url, { headers: { 'user-agent': 'quchen' }, signal: AbortSignal.timeout(1800000) });
+  if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+  const size = Number(res.headers.get('content-length') || total || 0);
+  let done = 0;
+  const reader = res.body.getReader();
+  rmSync(file, { force: true });
+  for (;;) {
+    const { value, done: end } = await reader.read();
+    if (end) break;
+    appendFileSync(file, Buffer.from(value));
+    done += value.length;
+    vpnProgress = { phase: 'downloading', done, total: size, message };
   }
-  const size = existsSync(file) ? statSync(file).size : 0;
-  if (!size) throw new Error('下载失败：没有拿到文件。先让 QuChen VPN 连上，再试一次。');
-  if (total && size < total * 0.98) throw new Error('下载不完整（' + Math.round(size / 1048576) + ' / ' + Math.round(total / 1048576) + ' MB），重试一次。');
-  return size;
+}
+
+/**
+ * Fetch one asset: the measured-fastest address first, every other one after it, and the system proxy
+ * when the network only lets that through. Gives up on a short file rather than installing half of it.
+ */
+async function vpnFetchAsset(url, file, total, message) {
+  const order = await assetCandidates(url);
+  let last = null;
+  for (const candidate of order) {
+    rmSync(file, { force: true });
+    try {
+      if (!candidate.url) {
+        vpnProgress = { phase: 'downloading', done: 0, total: total || 0, message: '改用系统代理…' };
+        await downloadWithProxy(url, file);
+      } else {
+        await streamAsset(candidate.url, file, total, message + (candidate.label && candidate.label !== '直连' ? '（' + candidate.label + '）' : ''));
+      }
+      const size = existsSync(file) ? statSync(file).size : 0;
+      if (!size) throw new Error('没有拿到文件');
+      if (total && size < total * 0.98) throw new Error('不完整 ' + Math.round(size / 1048576) + '/' + Math.round(total / 1048576) + ' MB');
+      return size;
+    } catch (e) {
+      last = e;
+    }
+  }
+  rmSync(file, { force: true });
+  throw new Error('下载失败：' + (last?.message ?? '没有可用的线路') + '。先让 QuChen VPN 连上，再试一次。');
 }
 
 /** Unpack a release zip into dir, mirroring over an older copy but keeping the app's own state. */
@@ -455,6 +577,17 @@ async function vpnUnpack(zipFile, dir) {
   try { rmSync(tmp, { recursive: true, force: true }); } catch { /* stays */ }
 }
 
+/** sha256 of a file, streamed: a 160 MB installer never sits in memory. */
+function fileSha256(file) {
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha256');
+    const stream = createReadStream(file);
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
 /** A setup runs silently into the folder we manage, never into Program Files behind a UAC prompt. */
 function vpnRunSetup(file, dir) {
   return new Promise((resolve, reject) => {
@@ -464,15 +597,26 @@ function vpnRunSetup(file, dir) {
   });
 }
 
+/**
+ * Which release asset to install: the silent Inno Setup package when the release has one, the portable
+ * zip only when it does not. Exported so the choice is testable without a network.
+ */
+export function vpnAssetFor(assets) {
+  const list = (assets ?? []).filter((a) => a?.name && a?.browser_download_url);
+  const setup = list.find((a) => /setup\.exe$/i.test(a.name));
+  if (setup) return { asset: setup, kind: '安装包' };
+  const zip = list.find((a) => /\.zip$/i.test(a.name));
+  if (zip) return { asset: zip, kind: '便携包' };
+  return null;
+}
+
 export async function vpnInstall() {
   vpnProgress = { phase: 'resolving', done: 0, total: 0, message: '正在查询最新版本…' };
   try {
     const rel = await vpnRelease();
-    const assets = (rel.assets ?? []).filter((a) => a?.name && a?.browser_download_url);
-    const zip = assets.find((a) => /\.zip$/i.test(a.name));
-    const setup = assets.find((a) => /setup\.exe$/i.test(a.name));
-    const asset = zip ?? setup;
-    if (!asset) throw new Error('作者还没有发布安装包（Release 里没有 zip 或 Setup.exe）。');
+    const picked = vpnAssetFor(rel.assets);
+    if (!picked) throw new Error('作者还没有发布安装包（Release 里没有 Setup.exe 或 zip）。');
+    const { asset, kind } = picked;
 
     const dir = vpnHome();
     mkdirSync(dir, { recursive: true });
@@ -481,15 +625,25 @@ export async function vpnInstall() {
       vpnProgress = { phase: 'installing', done: 0, total: 0, message: '先关掉正在运行的 QuChen VPN…' };
       await vpnStop();
     }
-    vpnProgress = { phase: 'downloading', done: 0, total: asset.size ?? 0, message: '正在下载 ' + asset.name + (asset.size ? '（约 ' + Math.round(asset.size / 1048576) + ' MB）' : '') };
-    const file = join(tmpdir(), asset.name);
+    vpnProgress = { phase: 'downloading', done: 0, total: asset.size ?? 0, message: '正在下载' + kind + ' ' + asset.name + (asset.size ? '（约 ' + Math.round(asset.size / 1048576) + ' MB）' : '') };
+    const file = join(tmpdir(), String(asset.name).replace(/[^\w.\-]/g, '_'));
     const size = await vpnFetchAsset(asset.browser_download_url, file, asset.size ?? 0, vpnProgress.message);
+    // A mirror relays the bytes, so the file is checked against the hash GitHub itself recorded for the
+    // asset. Releases published before GitHub started sending `digest` have none: then the size check in
+    // vpnFetchAsset is what there is.
+    const want = String(asset.digest ?? '').toLowerCase();
+    if (want.startsWith('sha256:')) {
+      vpnProgress = { ...vpnProgress, phase: 'installing', message: '正在核对安装包…' };
+      const got = await fileSha256(file);
+      if (got !== want.slice(7)) throw new Error('安装包校验失败（SHA-256 不符），已中止。请重试或从本地文件安装。');
+    }
 
-    vpnProgress = { phase: 'installing', done: size, total: asset.size ?? size, message: '正在安装…' };
-    if (asset === zip) await vpnUnpack(file, dir);
-    else await vpnRunSetup(file, dir);
+    const isSetup = /setup\.exe$/i.test(asset.name);
+    vpnProgress = { phase: 'installing', done: size, total: asset.size ?? size, message: isSetup ? '正在运行安装包…' : '正在解压…' };
+    if (isSetup) await vpnRunSetup(file, dir);
+    else await vpnUnpack(file, dir);
     try { rmSync(file, { force: true }); } catch { /* stays */ }
-    await sleep(1200);
+    await sleep(isSetup ? 2500 : 1200);
 
     const st = await vpnStatus();
     if (!st.installed) throw new Error('装完了，但在 ' + dir + ' 里没找到 QuChenVPN.exe（Release 里的包结构可能变了）。');

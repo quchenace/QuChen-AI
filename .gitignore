@@ -90,6 +90,11 @@ node_modules/
 /apps/host/docs/evidence/
 /apps/host/docs/checkpoints/
 
+# a test writes apps/quchen-desktop.exe as a fake program; an interrupted run must not leave it tracked
+/apps/*.exe
+# the gateway's local .env holds keys; gateway/.env.example is the reviewable artifact
+/gateway/.env
+
 # DGX Spark build outputs and local venv (docs/DGX_SPARK_LINUX.md)
 /out-spark/
 /build-spark/
