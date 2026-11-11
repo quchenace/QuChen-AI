@@ -1,7 +1,7 @@
 {
   "name": "quchen",
   "private": true,
-  "version": "0.2.32",
+  "version": "0.2.33",
   "type": "module",
   "description": "QuChen \u2014 local AI, tuned to one model. Web shell + engine host.",
   "scripts": {
