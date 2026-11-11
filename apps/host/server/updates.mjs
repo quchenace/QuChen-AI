@@ -3,6 +3,7 @@ import { OFFLINE_MESSAGE, looksOffline, plainUpdateError } from './update-messag
 /** Read-only release checks. Installing/rolling back needs a managed installer. */
 const RELEASES = 'https://api.github.com/repos/quchenace/QuChen-AI/releases?per_page=30';
 const RELEASE_PREFIX = 'https://github.com/quchenace/QuChen-AI/releases/';
+const RELEASES_PAGE = 'https://github.com/quchenace/QuChen-AI/releases/latest';
 
 function versionParts(value) {
   const match = /^v?(\d+)\.(\d+)\.(\d+)(?:\+[\w.-]+)?$/.exec(value ?? '');
@@ -29,7 +30,7 @@ export async function checkUpdates({ appVersion, engineVersion }, fetcher = fetc
     else {
       const newer = compare(versionParts(latest.tag_name), installed) > 0;
       // Release content is untrusted. Only link back to the known repository.
-      const releaseUrl = typeof latest.html_url === 'string' && latest.html_url.startsWith(RELEASE_PREFIX) ? latest.html_url : undefined;
+      const releaseUrl = typeof latest.html_url === 'string' && latest.html_url.startsWith(RELEASE_PREFIX) ? latest.html_url : RELEASES_PAGE;
       quchen = { status: newer ? 'available' : 'current', latestVersion: latest.tag_name, releaseUrl, message: newer ? `QuChen ${latest.tag_name} is available.` : 'QuChen is up to date.' };
     }
   } catch (error) {
@@ -108,9 +109,9 @@ export async function checkComponentUpdates({ control, appUpdater = null, appVer
   const controlNew = control_.status === 'available' ? control_.offered : null;
   const quchen = { installedVersion: appVersion ?? control_.installed ?? control.version ?? null, canInstall: !!((appNew && !appCannot) || controlNew) };
   const appCheckLine = "QuChen couldn't check for a new version of the app itself. Try again later.";
-  if (appNew || controlNew) Object.assign(quchen, { status: 'available', latestVersion: appNew ?? controlNew, message: `A new version of QuChen is available.${appNotes ? ` ${appNotes}` : ''}${appNew && appCannot ? ` ${appCannot}` : ''}${appCheckFailed ? ` ${appCheckLine}` : ''}` });
-  else if (appCheckFailed) Object.assign(quchen, { status: 'error', message: appCheckLine });
-  else Object.assign(quchen, { status: 'current', message: 'QuChen is up to date.' });
+  if (appNew || controlNew) Object.assign(quchen, { status: 'available', latestVersion: appNew ?? controlNew, releaseUrl: `${RELEASE_PREFIX}tag/${appNew ?? controlNew}`, message: `A new version of QuChen is available.${appNotes ? ` ${appNotes}` : ''}${appNew && appCannot ? ` ${appCannot}` : ''}${appCheckFailed ? ` ${appCheckLine}` : ''}` });
+  else if (appCheckFailed) Object.assign(quchen, { status: 'error', releaseUrl: RELEASES_PAGE, message: appCheckLine });
+  else Object.assign(quchen, { status: 'current', releaseUrl: RELEASES_PAGE, message: 'QuChen is up to date.' });
   if (appCheckFailed) quchen.details = appCheckFailed;
   return { checkedAt, feed: report.feed, quchen, engine: engineView, serving: report.serving ?? [] };
 }

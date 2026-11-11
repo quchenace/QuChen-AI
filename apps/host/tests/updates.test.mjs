@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkUpdates } from '../server/updates.mjs';
+import { checkComponentUpdates, checkUpdates } from '../server/updates.mjs';
 const installed = { appVersion: '0.1.0', engineVersion: 'quchen-engine 0.1.0' };
 const response = releases => async () => ({ ok: true, json: async () => releases });
 const release = (tag, extra = {}) => ({ tag_name: tag, html_url: `https://github.com/quchenace/QuChen-AI/releases/tag/${tag}`, ...extra });
@@ -23,7 +23,13 @@ test('empty, failed and unknown release checks never claim up to date', async ()
 test('release content cannot inject an external or script update link', async () => {
   const result = await checkUpdates(installed, response([release('v0.2.0', { html_url: 'javascript:alert(1)' })]));
   assert.equal(result.quchen.status, 'available');
-  assert.equal(result.quchen.releaseUrl, undefined);
+  assert.equal(result.quchen.releaseUrl, 'https://github.com/quchenace/QuChen-AI/releases/latest');
+});
+test('the packaged app update check links the offer to its own release page', async () => {
+  const control = { updateCheck: async () => ({ control: { status: 'available', offered: '0.2.33', installed: '0.2.30' }, engine: { status: 'unavailable' }, feed: {} }) };
+  const result = await checkComponentUpdates({ control, appVersion: '0.2.30' });
+  assert.equal(result.quchen.status, 'available');
+  assert.equal(result.quchen.releaseUrl, 'https://github.com/quchenace/QuChen-AI/releases/tag/0.2.33');
 });
 
 test('offline, "Check for updates" says there is no internet connection instead of "fetch failed"', async () => {

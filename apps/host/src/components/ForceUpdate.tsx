@@ -2,8 +2,11 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { tr } from '../lib/i18n';
 import { Btn, Icon } from './ui';
 import { api } from '../lib/client';
+import { openExternal } from '../lib/open-external';
 
 type Verdict = { status: string; latestVersion?: string; releaseUrl?: string; message?: string };
+
+const RELEASES_PAGE = 'https://github.com/quchenace/QuChen-AI/releases/latest';
 
 /**
  * A version gate: when a newer release exists, QuChen says so and offers nothing else until it is installed.
@@ -31,7 +34,7 @@ export function ForceUpdate({ children }: { children: ReactNode }) {
             <h1 style={{ margin: '12px 0 6px', fontSize: 22 }}>{tr('需要更新到 {0}', [block.latestVersion ?? ''])}</h1>
             <p className="small muted" style={{ margin: '0 0 18px' }}>{tr('这个版本已经停止支持。更新后即可继续使用，模型和对话不受影响。')}</p>
             <div className="row" style={{ justifyContent: 'center', gap: 10 }}>
-                <Btn variant="primary" icon="download" onClick={() => { if (block.releaseUrl) window.open(block.releaseUrl, '_blank'); }}>{tr('打开下载页')}</Btn>
+                <Btn variant="primary" icon="download" onClick={() => { void openExternal(block.releaseUrl || RELEASES_PAGE); }}>{tr('打开下载页')}</Btn>
                 <Btn icon="refresh" disabled={checking} onClick={() => void check()}>{tr('重新检查')}</Btn>
             </div>
         </div>
