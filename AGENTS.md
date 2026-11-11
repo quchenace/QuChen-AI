@@ -99,3 +99,31 @@ follow it whether a person or an agent writes the text. The short version:
   [docs/COMMUNITY_BENCHMARKS.md](docs/COMMUNITY_BENCHMARKS.md), compare against a same-day run of the build you are
   testing, and say what you did not test.
 - Open test requests and the hardware that is wanted are listed in [docs/TEST_REQUESTS.md](docs/TEST_REQUESTS.md).
+
+
+---
+
+## Release and version-number rules (mandatory)
+
+These rules bind every change, whether a person or an agent makes it. Do not skip them and do not rely on memory.
+
+1. **Every landed change ships.** Any fix, adjustment or behaviour change merged to `main` must be packaged and
+   released (Windows installer plus update feed). Leaving such a change on `main` without a release is not allowed.
+2. **The version number moves with the size of the change.**
+   - A small fix (bug fix, wording, styling, a narrow logic tweak, no interface or data-format change) bumps the
+     **last** number: `0.2.33` -> `0.2.34`.
+   - A large change (a new module, an architecture or data-format change, an incompatible change, a cross-module
+     refactor) bumps the **first** number and zeroes the rest: `0.2.x` -> `1.0.0`. A sizeable new feature that stays
+     inside the same major version bumps the middle number: `0.2.33` -> `0.3.0`.
+3. **One source of truth for the version.** The `version` in `apps/desktop/src-tauri/Cargo.toml`, mirrored into
+   `apps/desktop/src-tauri/Cargo.lock`, `apps/desktop/package.json` and `apps/host/package.json`. The git tag is
+   always `v<version>`.
+
+Release routine: bump those four version fields -> commit to `main` -> push the `v<version>` tag, which starts
+`release-windows.yml` -> wait for the run to succeed -> check that the release carries
+`QuChen_<version>_x64-setup.exe` and `quchen-feed.json`, and that the feed `sequence` went up. After a release,
+re-check the QuChen-VPN release asset names and the version comparison in `apps/host/server/integrations.mjs` so
+both repositories agree on which version is current.
+
+Documentation-only, comment-only and test-only changes need no version bump and no release, but they are still
+committed.
