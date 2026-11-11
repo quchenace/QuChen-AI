@@ -400,11 +400,17 @@ export function selectRemoteModel(remoteModel: RemoteModelSelection | null) {
  */
 function preferGatewayModel() {
   const p = state.providers;
-  if (!p || state.remoteModel) return;
+  if (!p) return;
   if (state.library?.loaded) return;
   if (state.native?.instances?.some(i => i.status === 'ready' || i.status === 'loading')) return;
-  const connection = p.connections.find(c => c.models.length > 0);
-  if (!connection) return;
+  // A previously chosen API model can outlive its connection (deleted, or the gateway came back with new
+  // ids): keep the choice only while it still resolves, otherwise fall through and pick a working one.
+  const stillThere = !!state.remoteModel && p.connections.some(c => c.id === state.remoteModel!.connectionId && c.models.some(m => m.id === state.remoteModel!.modelId));
+  if (stillThere) return;
+  const usable = p.connections.filter(c => c.models.length > 0);
+  if (!usable.length) return;
+  // The free gateway is the one that always costs nothing: it wins over any other saved connection.
+  const connection = usable.find(c => c.name === 'QuChen 免费网关') ?? usable[0];
   set({ remoteModel: { connectionId: connection.id, modelId: connection.models[0].id } });
 }
 

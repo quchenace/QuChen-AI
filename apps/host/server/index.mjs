@@ -127,6 +127,8 @@ const hub = new EventHub();
 const chatStore = createChatStore({ dir: store.DATA_DIR, privateDir: makePrivateDir });
 const modelProviders = createModelProviders({ directory: store.DATA_DIR, knownThinks: (connection, modelId) => visionProbe.knownThinks(connection, modelId), changed: value => hub.send('providers', withPictureAnswers(value)) });
 integrations.attachProviders(modelProviders);
+/** The gateway may come up long after launch: the picker asks again and we re-probe, at most every 10s. */
+let lastGatewayProbe = 0;
 const imageModels = createImageModels({ dataDir: store.DATA_DIR, modelsDir: () => store.MODELS_DIR, real: models.REAL, changed: value => hub.send('image-models', value) });
 /* The installed app ships QuChen Control (python + quchen_control) next to the host; a source checkout has none and keeps its older paths. */
 const CONTROL = findControl();
@@ -1110,7 +1112,18 @@ async function api(req, res, path, method, url) {
   // Credentials are handled only on the host. Responses and events expose a key-set flag.
   return error(res,404,'Unknown native control action.');}catch(e){return error(res,/Finish|Unload|running|current operation/.test(e.message)?409:400,e.message,{...(e.code&&typeof e.code==='string'?{code:e.code}:{}),...(e.details?{details:String(e.details)}:{})});}}
 
-  if (path === '/api/model-providers' && method === 'GET') return json(res, 200, withPictureAnswers(modelProviders.list()));
+  if (path === '/api/model-providers' && method === 'GET') {
+    const snapshot = withPictureAnswers(modelProviders.list());
+    const hasGateway = (snapshot.connections || []).some(c => c.name === 'QuChen 免费网关' && (c.models || []).length);
+    // A gateway started by hand (or hours after launch) never reaches the attachProviders retry window, so
+    // the picker kept saying "no model loaded". Re-probe on demand instead of giving up.
+    if (!hasGateway && Date.now() - lastGatewayProbe > 10000) {
+      lastGatewayProbe = Date.now();
+      await integrations.ensureGatewayConnection().catch(() => null);
+      return json(res, 200, withPictureAnswers(modelProviders.list()));
+    }
+    return json(res, 200, snapshot);
+  }
   if (path === '/api/model-providers/discover' && method === 'POST') {
     const body = await readBody(req);
     const controller = new AbortController();

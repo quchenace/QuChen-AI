@@ -66,7 +66,15 @@ function writeSettings(patch) {
 let providerStore = null;
 export function attachProviders(store) {
   providerStore = store;
-  setTimeout(() => { void ensureGatewayConnection().catch(() => null); }, 4000);
+  // The gateway is often started after QuChen (or was already running from an earlier launch), so one
+  // early look is not enough: keep trying until the connection is in place, then stop.
+  const retry = (attempt, delayMs) => setTimeout(async () => {
+    const connection = await ensureGatewayConnection().catch(() => null);
+    if (!connection && attempt < 20) retry(attempt + 1, attempt < 6 ? 5000 : 15000);
+  }, delayMs);
+  retry(0, 4000);
+  // Sweep the logon task an older build left behind: otherwise the first API call pops a Script Host box.
+  setTimeout(() => { void retireStaleProxyTask().catch(() => null); }, 1200);
 }
 
 /** Register or refresh the gateway connection in the model picker (idempotent). */
@@ -119,9 +127,37 @@ function portOpen(port, timeout = 600) {
   });
 }
 
+/** The launcher script an older build wrote for the logon task, under the same data folder as the gateway log. */
+const proxyLauncher = () => join(DATA, 'api-proxy', 'start-hidden.vbs');
+const PROXY_TASK = 'QuChen API proxy';
+/** Sticky: once the task is known to point at a script that is gone, never poke it again this session. */
+let proxyTaskRetired = false;
+
+function schtasks(args) {
+  return new Promise((resolve) => execFile('schtasks.exe', args, { windowsHide: true }, () => resolve(null)));
+}
+
+/**
+ * An older build registered a logon task that runs `wscript.exe <data>\api-proxy\start-hidden.vbs`. This build starts
+ * the gateway as a child of the host instead, so nothing rewrites that script; on a machine that upgraded, the task
+ * survives and every run of it is a Windows Script Host box saying "cannot find script file". End and delete it, once,
+ * so opening QuChen stops popping that dialog.
+ */
+async function retireStaleProxyTask() {
+  if (proxyTaskRetired) return true;
+  if (existsSync(proxyLauncher())) return false;
+  proxyTaskRetired = true;
+  await schtasks(['/End', '/TN', PROXY_TASK]);
+  await schtasks(['/Delete', '/TN', PROXY_TASK, '/F']);
+  return true;
+}
+
 async function ensureProxy() {
   if (await portOpen(PROXY_PORT)) return true;
-  await new Promise((resolve) => execFile('schtasks.exe', ['/Run', '/TN', 'QuChen API proxy'], { windowsHide: true }, () => resolve(null)));
+  // Only a machine that still has the old launcher script can start it: running a task whose script is missing is
+  // what throws the Script Host error in the owner's face.
+  if (await retireStaleProxyTask()) return false;
+  await schtasks(['/Run', '/TN', PROXY_TASK]);
   for (let i = 0; i < 10; i++) { await sleep(400); if (await portOpen(PROXY_PORT)) return true; }
   return false;
 }
@@ -338,7 +374,13 @@ function maybeWriteGatewayConfig(dir, ofm = null) {
 }
 
 export async function gatewayStart() {
-  if (await portOpen(GATEWAY_PORT)) return gatewayStatus();
+  // Already running (started by an earlier launch, or by the person directly): still make sure the model
+  // picker knows about it, otherwise chat keeps saying no model is loaded.
+  if (await portOpen(GATEWAY_PORT)) {
+    const status = await gatewayStatus();
+    if (status.models.length) await ensureGatewayConnection().catch(() => null);
+    return status;
+  }
   let dir = gatewayDir();
   let exe = join(dir, '.venv', 'Scripts', 'litellm.exe');
   if (!existsSync(exe)) {

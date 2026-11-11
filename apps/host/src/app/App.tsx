@@ -120,8 +120,11 @@ function FocusBar() {
     const library = useStore((s) => s.library);
     const monitor = useStore((s) => s.monitor);
     const model = library?.variants.find((v) => v.id === library.loaded) ?? null;
-    const phase = nativeCurrent ? (nativeCurrent.status === 'ready' ? nativeCurrent.phase : nativeCurrent.status) : monitor?.phase ?? 'idle';
-    const state = ['error', 'unavailable'].includes(phase) ? 'idle' : phase === 'generating' || phase === 'reading' || phase === 'thinking' ? 'busy' : model || nativeCurrent ? 'ready' : 'idle';
+    // An API model answers chat as well: the bar must not claim nothing is loaded while one is chosen.
+    const remote = useStore((s) => s.remoteModel), providers = useStore((s) => s.providers);
+    const apiModel = remote ? providers?.connections.find((c) => c.id === remote.connectionId)?.models.find((m) => m.id === remote.modelId) : undefined;
+    const phase = nativeCurrent ? (nativeCurrent.status === 'ready' ? nativeCurrent.phase : nativeCurrent.status) : apiModel ? 'ready' : monitor?.phase ?? 'idle';
+    const state = ['error', 'unavailable'].includes(phase) ? 'idle' : phase === 'generating' || phase === 'reading' || phase === 'thinking' ? 'busy' : model || nativeCurrent || apiModel ? 'ready' : 'idle';
     return (<div className="focusbar" data-state={state}>
       <span className="focusbar__dot"/>
       <span className="strong" style={{ color: 'var(--st-ink)' }}>
