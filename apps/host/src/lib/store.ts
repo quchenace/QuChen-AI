@@ -359,8 +359,15 @@ function set(patch: Partial<AppState> | ((s: AppState) => Partial<AppState>)) {
   state = { ...state, ...next };
   // Opening another chat shows that chat's model choice and whether that chat is mid-turn.
   if (state.activeSession !== before) {
-    const chosen = state.sessions.find(s => s.id === state.activeSession)?.preferences?.remoteModel ?? null;
+    // A chat that never stored a preference inherits the model already in use. Reading it as `null`
+    // made every new conversation look model-less ("检测到网关模型，一点新对话就识别不到").
+    // An explicit `remoteModel: null` on the chat (the person cleared it) still wins.
+    const prefs = state.sessions.find(s => s.id === state.activeSession)?.preferences;
+    const chosen = prefs && 'remoteModel' in prefs ? (prefs.remoteModel ?? null) : state.remoteModel;
     state = { ...state, remoteModel: 'remoteModel' in next ? state.remoteModel : chosen, streaming: !!state.activeSession && liveTurns.has(state.activeSession) };
+    // A chat stored before the gateway came up kept no model, so opening it — or starting a new one — left
+    // the composer saying there is no model while the gateway was right there. Fill that gap on open.
+    if (!('remoteModel' in next) && !state.remoteModel) preferGatewayModel();
   }
   for (const l of listeners) l();
 }
@@ -394,6 +401,9 @@ export function selectRemoteModel(remoteModel: RemoteModelSelection | null) {
   if (id) patchSession(id, s => ({ ...s, preferences: { ...s.preferences, remoteModel } }));
   try { localStorage.removeItem('quchen.remote-model.v1'); } catch { /* The old global choice is retired. */ }
 }
+/** The gateway's alias lanes: the ones that keep answering whatever the plugin or an upstream is doing. */
+const GATEWAY_LANES = ['deepseek-v4.1-flash', 'deepseek-v4.1-flash-think', 'fast', 'zero', 'free'];
+
 /**
  * Nothing local is loaded but a gateway connection is saved: answer from the gateway instead of telling the
  * person there is no model. Only ever fills a gap — a choice already made is left alone.
@@ -411,7 +421,12 @@ function preferGatewayModel() {
   if (!usable.length) return;
   // The free gateway is the one that always costs nothing: it wins over any other saved connection.
   const connection = usable.find(c => c.name === 'QuChen 免费网关') ?? usable[0];
-  set({ remoteModel: { connectionId: connection.id, modelId: connection.models[0].id } });
+  // Prefer a lane that answers on its own: the plugin's ofm/<id> lanes disappear with the plugin, and a
+  // chat opened on one of those looks model-less again the moment it goes.
+  const stable = connection.models.find(m => GATEWAY_LANES.includes(m.id))
+    ?? connection.models.find(m => !m.id.startsWith('ofm/'))
+    ?? connection.models[0];
+  set({ remoteModel: { connectionId: connection.id, modelId: stable.id } });
 }
 
 function applyProviders(providers: ModelProviders) {
@@ -1382,7 +1397,9 @@ export function newSession(): Session {
     workspace: state.workspaces.find(w => w.id === state.activeWorkspace)?.path ?? state.workspacePath,
     tokensIn: 0,
     tokensOut: 0,
-    ...(state.activeSession === null && state.remoteModel ? { preferences: { remoteModel: state.remoteModel } } : {}),
+    // A new chat starts on whatever is selected right now, gateway included: the picker keeps showing
+    // the same model instead of falling back to "nothing loaded" the moment a chat is created.
+    ...(state.remoteModel ? { preferences: { remoteModel: state.remoteModel } } : {}),
   };
   const sessions = [session, ...state.sessions];
   persistSessions(sessions);

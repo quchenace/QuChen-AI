@@ -135,11 +135,27 @@ const BUILT_IN = [
 
 /** The groups QuChen's chat asks for: the same four names as before, so an old profile keeps working. */
 const GROUPS = {
-  'deepseek-v4.1-flash': ['nemotron-3-ultra', 'cohere-north', 'flint', 'pollinations-fast'],
-  'deepseek-v4.1-flash-think': ['nemotron-nano-reasoning', 'gemma-4-31b', 'pollinations-fast'],
+  // The plain lane is what chat asks for by default, so it holds only upstreams that answer instead of
+  // thinking: nemotron-3-ultra spent the whole token budget reasoning and returned an empty `content`,
+  // which the app shows as a broken model.
+  'deepseek-v4.1-flash': ['pollinations-fast', 'cohere-north', 'flint'],
+  'deepseek-v4.1-flash-think': ['nemotron-nano-reasoning', 'nemotron-3-ultra', 'gemma-4-31b'],
   fast: ['pollinations-fast', 'cohere-north'],
   zero: ['pollinations-fast'],
 };
+
+/** Upstreams that think before they answer: the app offers a reasoning level for these and not for the rest. */
+const REASONING = /(think|reasoning|qwq|-r1\b|nemotron-3-ultra|nemotron-3\.5-super-vl|deepseek-v4\.1-pro|glm-[45])/i;
+
+function thinks(record) {
+  if (record.reasoning !== undefined) return !!record.reasoning;
+  return REASONING.test(record.name ?? '') || REASONING.test(record.model ?? '');
+}
+
+/** Whether a gateway model id thinks before it answers; the picker uses this to offer a reasoning level. */
+export function gatewayThinks(id) {
+  return REASONING.test(String(id ?? ''));
+}
 
 /**
  * The same account can be named twice by the two sources: QuChen's built-in block calls the OpenRouter
@@ -192,13 +208,16 @@ export function enabledProviders(env, { includeAll = false } = {}) {
 }
 
 function block(record) {
+  // `supports_reasoning` is what makes LiteLLM advertise the model as a reasoner: without it the app has
+  // no cue and hides the reasoning level menu for every gateway model.
+  const info = 'note: ' + q(record.note) + (thinks(record) ? ', supports_reasoning: true' : '');
   return [
     '  - model_name: ' + q(record.name),
     '    litellm_params:',
     '      model: ' + q('openai/' + record.model),
     '      api_base: ' + q(record.base),
     '      api_key: ' + q(record.key),
-    '    model_info: { note: ' + q(record.note) + ' }',
+    '    model_info: { ' + info + ' }',
   ].join('\n');
 }
 
@@ -285,6 +304,34 @@ export function buildGatewayConfig(env = {}, { includeAll = false, ofm = null, c
       lines.push(block({ ...record, name: group, note: '组：' + group }));
     }
   }
+
+  // A group is round-robined, so a single exhausted free upstream used to answer the whole group with
+  // "502 Free usage limit reached". Retries hand the call to a sibling member, the cooldown parks a failing
+  // member for a minute, and every alias falls back to the one upstream that needs no key at all.
+  //
+  // Picking a single model by name bypassed all of that: the quota error came back as the model's own answer
+  // ("No fallback was attempted"), which is what made every synced model look broken. So each written name
+  // gets a fallback too, pointed at a DeepSeek lane from the plugin gateway when it runs, otherwise the
+  // keyless one.
+  const ofmFallback = ofmModels.map((m) => 'ofm/' + m.id).find((id) => /deepseek/i.test(id) && !/think/i.test(id)) || null;
+  const fallbackTarget = ofmFallback || 'pollinations-fast';
+  const fallbackLine = (name) => {
+    const chain = [fallbackTarget, 'pollinations-fast'].filter((x, i, a) => x !== name && a.indexOf(x) === i);
+    return chain.length ? '    - ' + q(name) + ': [' + chain.map(q).join(', ') + ']' : null;
+  };
+  const fallbackTargets = [...new Set([...written.map((w) => w.name), ...Object.keys(groups)])];
+  lines.push('',
+    'router_settings:',
+    '  num_retries: 2',
+    '  retry_after: 1',
+    '  allowed_fails: 1',
+    '  cooldown_time: 600',
+    '  fallbacks:',
+    ...fallbackTargets.map(fallbackLine).filter(Boolean),
+    '',
+    'litellm_settings:',
+    '  drop_params: true',
+  );
 
   const text = lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+$/gm, '').replace(/\s*$/, '\n');
   const names = [...text.matchAll(/^\s*-\s*model_name:\s*"([^"]+)"/gm)].map((m) => m[1]);

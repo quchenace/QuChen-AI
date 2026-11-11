@@ -8,15 +8,19 @@
 const PROBE_TIMEOUT_MS = 15000;
 const PROBE_CONCURRENCY = 3;
 const MAX_FREE_LANES = 12;
+const MAX_CATALOGUE = 16;
 const ALIASES = ['deepseek-v4.1-flash', 'deepseek-v4.1-flash-think', 'fast', 'zero', 'free', 'pollinations-fast'];
 
 const state = { at: 0, checking: false, error: null, baseUrl: "", key: "", models: [], results: {}, timer: null, generation: 0 };
 
+// The catalogue lanes are what the harness profile lists by name, so they have to be probed too: a list whose
+// first entries are all out of daily quota is what made every synced model answer with a 429 of its own.
 function pickTargets(models) {
   const list = Array.isArray(models) ? models : [];
+  const catalogue = list.filter((id) => typeof id === 'string' && !id.startsWith('ofm/')).slice(0, MAX_CATALOGUE);
   const free = list.filter((id) => typeof id === 'string' && id.startsWith('ofm/our-free-model/')).slice(0, MAX_FREE_LANES);
   const aliases = ALIASES.filter((id) => list.includes(id));
-  return [...new Set([...aliases, ...free])];
+  return [...new Set([...aliases, ...catalogue, ...free])];
 }
 
 async function probeOne(baseUrl, key, model, fetcher) {

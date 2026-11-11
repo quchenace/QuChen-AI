@@ -1703,6 +1703,12 @@ async function api(req, res, path, method, url) {
     return json(res, 200, integrations.setAutoSync(!!body?.on, body?.withGateway !== false));
   }
   // --- the app updates itself: download the published installer, check it, run it -----------------
+  // The download takes minutes on a slow line, so the install starts and the page watches this instead
+  // of a request that hangs with no visible trace of what it is doing.
+  if (path === '/api/app/update/progress' && method === 'GET') {
+    const { appUpdateProgress } = await import('./app-update.mjs');
+    return json(res, 200, appUpdateProgress());
+  }
   if (path === '/api/app/update/install' && method === 'POST') {
     try {
       const { installAppUpdate } = await import('./app-update.mjs');

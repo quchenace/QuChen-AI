@@ -20,7 +20,7 @@ import { createConnection } from 'node:net';
 // Written at build time from a repository secret: the owner's key, shipped so the gateway works out of the box.
 import { DEFAULT_OPENROUTER_KEY } from './default-key.mjs';
 // The free-model catalogue of the dsh-our-free-model plugin, and the LiteLLM config built from it.
-import { buildGatewayConfig, describeGatewayConfig, freeModelCatalogue, installedCatalogue, parseEnv, envText } from './gateway-config.mjs';
+import { buildGatewayConfig, describeGatewayConfig, freeModelCatalogue, gatewayThinks, installedCatalogue, parseEnv, envText } from './gateway-config.mjs';
 import { ofmModels, ofmStatus } from './ofm-gateway.mjs';
 import { checkGatewayHealth, configureGatewayHealth, gatewayHealthStatus, startGatewayHealth, stopGatewayHealth } from './gateway-health.mjs';
 
@@ -92,7 +92,9 @@ export async function ensureGatewayConnection() {
       baseUrl: 'http://127.0.0.1:' + GATEWAY_PORT + '/v1',
       protocol: 'openai-chat',
       apiKey: gatewayKey(),
-      models: gateway.models.map((id) => ({ id, name: id })),
+      // `reasoning` is what shows the reasoning level menu for a gateway model: the gateway's /v1/models
+      // does not advertise it, so the name decides.
+      models: gateway.models.map((id) => ({ id, name: id, reasoning: gatewayThinks(id) })),
     });
     return providerStore.list().connections.find((c) => c.name === 'QuChen 免费网关') ?? null;
   } catch (e) {
@@ -294,6 +296,21 @@ function runCapture(exe, args, env) {
 }
 
 /**
+ * A litellm.exe left running from an earlier install holds its own image file, so pip cannot replace it
+ * (WinError 32, surfaced as "Could not install packages due to an OSError") and the setup looks like a
+ * network failure. Stopping our own child is not enough: a gateway started by hand is in the way too.
+ */
+async function gatewayKill() {
+  stopGatewaySupervisor();
+  stopGatewayHealth();
+  const pid = readSettings().gatewayPid;
+  if (pid) await new Promise((resolve) => execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => resolve(null)));
+  await new Promise((resolve) => execFile('taskkill.exe', ['/IM', 'litellm.exe', '/T', '/F'], { windowsHide: true }, () => resolve(null)));
+  writeSettings({ gatewayPid: null });
+  await sleep(500);
+}
+
+/**
  * Set the free gateway up on this PC: a virtualenv next to QuChen's own data, LiteLLM inside it, and the
  * config built from the built-in endpoints plus the dsh-our-free-model catalogue. Nothing is downloaded
  * from GitHub, and the folder can be moved like any other.
@@ -334,8 +351,18 @@ export async function gatewayInstall() {
     await runCapture(py, ['-m', 'venv', venv], {});
   }
   const vpy = join(venv, 'Scripts', 'python.exe');
+  // Nothing may hold litellm.exe while it is (re)installed. The log line people hit was
+  // "Could not install packages ... WinError 32 ... litellm.exe", which reads as a network problem.
+  await gatewayKill();
   await runCapture(vpy, ['-m', 'pip', 'install', '--upgrade', 'pip', '--index-url', index, '--disable-pip-version-check'], {});
-  await runCapture(vpy, ['-m', 'pip', 'install', 'litellm[proxy]', '--index-url', index, '--disable-pip-version-check'], {});
+  const pipInstall = ['-m', 'pip', 'install', 'litellm[proxy]', '--index-url', index, '--disable-pip-version-check'];
+  try {
+    await runCapture(vpy, pipInstall, {});
+  } catch (e) {
+    if (!/WinError 32|being used by another process|或被另一进程使用/i.test(String(e?.message ?? ''))) throw e;
+    await gatewayKill();
+    await runCapture(vpy, pipInstall, {});
+  }
   writeSettings({ gatewayDir: home, gatewayInstalled: new Date().toISOString() });
   return gatewayStatus();
 }
@@ -373,12 +400,47 @@ function maybeWriteGatewayConfig(dir, ofm = null) {
   return writeGatewayConfig(dir, undefined, { ofm });
 }
 
+// The gateway is a separate process whose upstreams can take it down (a quota error inside LiteLLM, a
+// killed child, a machine that slept). When it goes, every model DSH was synced to answers with
+// "connection refused", which reads as a broken app. So the port is watched and the gateway is put back.
+let supervisor = null;
+let supervisorFails = 0;
+let supervisorRestarts = 0;
+let supervisorBusy = false;
+
+function startGatewaySupervisor() {
+  if (supervisor) return;
+  supervisor = setInterval(async () => {
+    if (supervisorBusy) return;
+    supervisorBusy = true;
+    try {
+      if (await portOpen(GATEWAY_PORT, 900)) { supervisorFails = 0; return; }
+      supervisorFails += 1;
+      if (supervisorFails < 2 || supervisorRestarts >= 3) return;
+      supervisorRestarts += 1;
+      await gatewayStart();
+      if (await portOpen(GATEWAY_PORT, 900)) { supervisorFails = 0; supervisorRestarts = 0; }
+    } catch { /* the next tick tries again */ } finally {
+      supervisorBusy = false;
+    }
+  }, 20000);
+  if (supervisor.unref) supervisor.unref();
+}
+
+export function stopGatewaySupervisor() {
+  if (supervisor) clearInterval(supervisor);
+  supervisor = null;
+  supervisorFails = 0;
+  supervisorRestarts = 0;
+}
+
 export async function gatewayStart() {
   // Already running (started by an earlier launch, or by the person directly): still make sure the model
   // picker knows about it, otherwise chat keeps saying no model is loaded.
   if (await portOpen(GATEWAY_PORT)) {
     const status = await gatewayStatus();
     if (status.models.length) await ensureGatewayConnection().catch(() => null);
+    startGatewaySupervisor();
     return status;
   }
   let dir = gatewayDir();
@@ -410,12 +472,14 @@ export async function gatewayStart() {
     const baseUrl = 'http://127.0.0.1:' + GATEWAY_PORT + '/v1';
     configureGatewayHealth({ baseUrl, key: gatewayKey(), models: status.models });
     startGatewayHealth({ baseUrl, key: gatewayKey(), models: status.models });
+    startGatewaySupervisor();
     await ensureGatewayConnection().catch(() => null);
   }
   return status;
 }
 
 export async function gatewayStop() {
+  stopGatewaySupervisor();
   stopGatewayHealth();
   const pid = readSettings().gatewayPid;
   if (pid) await new Promise((resolve) => execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => resolve(null)));
@@ -727,13 +791,33 @@ function fileSha256(file) {
   });
 }
 
-/** A setup runs silently into the folder we manage, never into Program Files behind a UAC prompt. */
+/**
+ * A setup runs silently into the folder we manage, never into Program Files behind a UAC prompt.
+ *
+ * The path is passed bare. spawn() does not go through a shell, and libuv already quotes an argument
+ * that contains a space, so an extra pair of quotes ends up *inside* the value: Inno Setup then reads
+ * a directory that still holds a `"`, refuses it during initialization and exits 1 (or 3) before it
+ * even opens the /LOG file. That was the "安装程序返回 1" every install from inside the app hit.
+ * When the package still refuses, one retry runs without /DIR so the built-in DefaultDirName applies,
+ * and the setup log tail is quoted back so the next failure is diagnosable.
+ */
 function vpnRunSetup(file, dir) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(file, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOCANCEL', '/NOICONS', '/CURRENTUSER', '/DIR="' + dir + '"'], { windowsHide: true });
+  const log = join(tmpdir(), 'quchen-vpn-setup.log');
+  const run = (args) => new Promise((resolve, reject) => {
+    const child = spawn(file, args, { windowsHide: true });
     child.on('error', reject);
-    child.on('exit', (code) => (code === 0 ? resolve(null) : reject(new Error('安装程序返回 ' + code))));
+    child.on('exit', (code) => (code === 0 ? resolve(null) : reject(new Error('exit ' + code))));
   });
+  const base = ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOCANCEL', '/NOICONS', '/CURRENTUSER'];
+  try { rmSync(log, { force: true }); } catch { /* none */ }
+  return run([...base, '/DIR=' + dir, '/LOG=' + log])
+    .catch(() => run([...base, '/LOG=' + log]).catch((e) => {
+      let why = '';
+      try {
+        why = readFileSync(log, 'utf8').split(/\r?\n/).filter((l) => /error|failed|invalid|refus/i.test(l)).slice(-2).join(' / ');
+      } catch { /* no log: the exit code is all there is */ }
+      throw new Error('安装程序返回 ' + (e.message || '').replace(/^exit\s*/i, '') + (why ? '（' + why.slice(0, 200) + '）' : '') + '。安装包在 ' + file + '，也可以手动双击安装。');
+    }));
 }
 
 /**
@@ -857,13 +941,31 @@ function localName(id) {
   return id.replace(/^qwen(\d[\d.]*)-/, 'Qwen$1 ').replace(/-/g, ' ').replace(/\s+/g, ' ').trim() + ' (QuChen 本地)';
 }
 
-function modelLines(ids, indent, nameFor) {
-  return ids.slice(0, MAX_MODELS).flatMap((id) => [
-    indent + '- id: ' + id,
-    indent + '  name: ' + nameFor(id),
-    indent + '  contextWindow: ' + CONTEXT,
-    indent + '  maxTokens: ' + MAX_TOKENS,
-  ]);
+// pi-ai only shows a thinking-level picker for entries that declare `reasoningEfforts`, so the synced
+// gateway models had none and the level could not be chosen. The empty `off:` is deliberate: it offers "off"
+// without a spelling to send to the upstream. `'all'` declares it on every lane: behind the gateway the
+// choice still reaches an upstream that takes it, and the gateway drops the field for the ones that do not.
+const REASONING_LANE = /reasoning|think|deepseek|nemotron-nano|o3|o4|\br1\b|qwen|glm|kimi|llama|mistral|gpt|claude|gemini/i;
+
+function modelLines(ids, indent, nameFor, { reasoning = false } = {}) {
+  return ids.slice(0, MAX_MODELS).flatMap((id) => {
+    const lines = [
+      indent + '- id: ' + id,
+      indent + '  name: ' + nameFor(id),
+      indent + '  contextWindow: ' + CONTEXT,
+      indent + '  maxTokens: ' + MAX_TOKENS,
+    ];
+    if (reasoning === 'all' || (reasoning && REASONING_LANE.test(id))) {
+      lines.push(
+        indent + '  reasoningEfforts:',
+        indent + '    off:',
+        indent + '    low: low',
+        indent + '    medium: medium',
+        indent + '    high: high',
+      );
+    }
+    return lines;
+  });
 }
 
 const HARNESS_BLOCK = (baseUrl, localIds, gatewayIds) => {
@@ -886,8 +988,12 @@ const HARNESS_BLOCK = (baseUrl, localIds, gatewayIds) => {
       '        api: openai-completions',
       '        baseURL: http://127.0.0.1:' + GATEWAY_PORT + '/v1',
       '        apiKeyEnv: QUCHEN_GATEWAY_KEY',
+      // Every lane behind this base URL is reached over the OpenAI protocol, and the reasoning dial is the
+      // DeepSeek-style one: an upstream that does not take it drops the field (drop_params in the gateway).
+      '        compat:',
+      '          thinkingFormat: deepseek',
       '        models:',
-      ...modelLines(gatewayIds, '          ', (id) => id + ' (免费网关)'),
+      ...modelLines(gatewayIds, '          ', (id) => id + ' (免费网关)', { reasoning: 'all' }),
     );
   }
   return lines.join('\n') + '\n';
@@ -904,8 +1010,14 @@ export function writeHarnessProfile(text, block) {
 function ensureCredentialRef(name, value) {
   const file = credentialsFile();
   let text = existsSync(file) ? readFileSync(file, 'utf8') : 'version: 1\n';
-  if (new RegExp('^\\s+' + name + ':', 'm').test(text)) return text;
-  if (/^refs:\s*$/m.test(text)) text = text.replace(/^refs:\s*$/m, 'refs:\n  ' + name + ': ' + value);
+  // The key is stable in practice but not guaranteed: a reinstall writes a new master key, and this used to
+  // keep the stale one, so every synced gateway model answered 401 and looked broken.
+  const line = new RegExp('^(\\s+)' + name + ':\\s*(.*)$', 'm');
+  const found = line.exec(text);
+  if (found) {
+    if (found[2].trim() === value) return text;
+    text = text.replace(line, (_, ind) => ind + name + ': ' + value);
+  } else if (/^refs:\s*$/m.test(text)) text = text.replace(/^refs:\s*$/m, 'refs:\n  ' + name + ': ' + value);
   else text = text.replace(/^version:\s*\d+\s*$/m, (m) => m + '\nrefs:\n  ' + name + ': ' + value);
   writeFileSync(file, text, 'utf8');
   return text;
@@ -931,11 +1043,34 @@ export async function harnessStatus() {
   };
 }
 
+/**
+ * The gateway models worth writing into the harness profile: the lanes that answer right now come first, a
+ * lane that just answered 429/5xx is kept but pushed to the back. Listing seven out-of-quota lanes first is
+ * exactly why every synced model looked broken — the person tries them in order and all of them fail.
+ */
+async function usableGatewayModels(gateway) {
+  const models = Array.isArray(gateway.models) ? gateway.models : [];
+  if (!models.length) return [];
+  let health = null;
+  const base = 'http://127.0.0.1:' + GATEWAY_PORT + '/v1';
+  try {
+    // The watcher rewrites the profile often: reuse the last probe unless there is none at all.
+    health = await checkGatewayHealth({ baseUrl: base, key: gatewayKey(), models, force: false });
+    if (!health?.results?.length) health = await checkGatewayHealth({ baseUrl: base, key: gatewayKey(), models, force: true });
+  } catch { /* unprobed: keep the order the gateway reports */ }
+  const results = Array.isArray(health?.results) ? health.results : [];
+  if (!results.length) return models;
+  const okOrder = new Map(results.filter((r) => r.ok).map((r) => r.model).map((id, i) => [id, i]));
+  const failing = new Set(results.filter((r) => !r.ok && (r.status === 429 || r.status >= 500 || r.status === 0)).map((r) => r.model));
+  const rank = (id) => (okOrder.has(id) ? 0 : failing.has(id) ? 2 : 1);
+  return [...models].sort((a, b) => (rank(a) - rank(b)) || ((okOrder.get(a) ?? 0) - (okOrder.get(b) ?? 0)));
+}
+
 /** Write the profile from the live state. Used by the button and by the keep-in-sync watcher. */
 async function writeProfile({ withGateway = true } = {}) {
   const running = runningInstance();
   const gateway = await gatewayStatus();
-  const gatewayModels = withGateway ? gateway.models : [];
+  const gatewayModels = withGateway ? await usableGatewayModels(gateway) : [];
   // No local model is fine: the gateway models alone are worth writing (the harness can use them).
   let base = { baseUrl: null, via: 'none' };
   let localModels = [];
