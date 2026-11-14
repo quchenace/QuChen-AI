@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {createRequire} from 'node:module';
@@ -38,13 +38,14 @@ async function load(){
  }};
  const entry=join(dir,'entry.tsx');
  const out=join(dir,'out.cjs');
- await build({
+ const built=await build({
   stdin:{contents:`export {GuidedSetup} from ${JSON.stringify(resolve(root,'src/components/GuidedSetup.tsx'))};
    export {NativeModels} from ${JSON.stringify(resolve(root,'src/components/NativeModels.tsx'))};
    export {renderToString} from 'react-dom/server'; export {createElement} from 'react';`,resolveDir:root,sourcefile:'entry.tsx',loader:'tsx'},
-  bundle:true,format:'cjs',platform:'node',outfile:out,jsx:'automatic',logLevel:'silent',plugins:[stubPlugin],
+  bundle:true,write:false,format:'cjs',platform:'node',outfile:out,jsx:'automatic',logLevel:'silent',plugins:[stubPlugin],
   loader:{'.svg':'dataurl','.png':'dataurl','.css':'empty'},
  });
+ writeFileSync(out,built.outputFiles[0].contents);
  globalThis.window??=globalThis;globalThis.matchMedia??=()=>({matches:false,addEventListener(){},removeEventListener(){}});
  mod=createRequire(import.meta.url)(out);
  return mod;

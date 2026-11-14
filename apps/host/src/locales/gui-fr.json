@@ -4,5 +4,11 @@
  "gf03": "Fermez les autres programmes et réessayez, ou choisissez « Garder de la place pour mon travail ». En mode expert, vous pouvez aussi activer l’option de faible RAM : une partie du modèle est alors lue depuis le SSD.",
  "gf04": "Livré dans",
  "gf05": "Dossier de travail",
- "gf06": "{0} fichiers"
+ "gf06": "{0} fichiers",
+ "gf07": "Pour la première configuration, cliquez sur « Installer ». QuChen utilise son Python intégré pour installer la passerelle localement ; ensuite, il suffit de la démarrer.",
+ "gf08": "{0} autres peuvent être activés en ajoutant des clés API",
+ "gf09": "Installez ceci uniquement lorsque vous avez besoin d’accéder à GitHub ; le chat et la passerelle fonctionnent sans cela. Les fichiers Setup.exe officiels et ZIP portables sont pris en charge, avec tests de vitesse et progression du téléchargement.",
+ "gf10": "Un lecteur de musique autonome que vous pouvez lancer ici après l’installation. Le chat IA de Radio utilise les modèles de QuChen-AI et ne démarre pas un autre service IA.",
+ "gf11": "Vous pouvez utiliser QuChen sans moteur local : ignorez cette étape, puis activez la passerelle gratuite sur la page des services API ou synchronisez-la avec DeepSeek Harness.",
+ "gf12": "Passerelle de modèles gratuite et outils facultatifs"
 }

@@ -80,10 +80,14 @@ try {
     $p = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
     if ($p.ExitCode -ne 0) { Die "the installer exited with code $($p.ExitCode). Run it by hand: $exe" }
 
-    $app = Join-Path $env:LOCALAPPDATA 'QuChen\QuChen.exe'
-    if (-not (Test-Path $app)) {
-        $found = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'QuChen') -Filter 'QuChen.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($found) { $app = $found.FullName }
+    # The bundle's exe is quchen-desktop.exe, not QuChen.exe, and the folder is whatever the installer
+    # picked: read it from the uninstall entry and take the largest exe in it.
+    $app = ''
+    $roots = @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')
+    $item = Get-ItemProperty $roots -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'QuChen' } | Select-Object -First 1
+    $dir = if ($item -and $item.InstallLocation) { $item.InstallLocation.Trim('"') } else { '' }
+    if ($dir -and (Test-Path -LiteralPath $dir)) {
+        $app = Get-ChildItem -LiteralPath $dir -Filter *.exe -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch '^(unins|uninstall)' } | Sort-Object Length -Descending | Select-Object -First 1 -ExpandProperty FullName
     }
     Write-Host ''
     Write-Host "  QuChen $version is installed." -ForegroundColor Green

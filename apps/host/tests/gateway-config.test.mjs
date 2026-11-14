@@ -44,7 +44,7 @@ test('the OpenRouter key turns the built-in set on, and each group fans out to i
   const built = buildGatewayConfig({ OPENROUTER_KEY_1: 'sk-or-1' });
   const names = deployments(built.text);
   assert.equal(new Set(names).size, 13, 'six built-in upstreams, pollinations, four groups, the catalogue route and its group');
-  assert.equal(names.filter((n) => n === 'deepseek-v4.1-flash').length, 4);
+  assert.equal(names.filter((n) => n === 'deepseek-v4.1-flash').length, 3);
   assert.equal(names.filter((n) => n === 'deepseek-v4.1-flash-think').length, 3);
   assert.equal(names.filter((n) => n === 'fast').length, 2);
   assert.equal(names.filter((n) => n === 'zero').length, 1);

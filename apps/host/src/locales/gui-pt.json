@@ -4,5 +4,11 @@
  "gf03": "Feche outros programas e tente novamente, ou escolha “Deixar espaço para o meu trabalho”. No modo especialista, você também pode ativar a opção de pouca RAM, para que parte do modelo seja lida do SSD.",
  "gf04": "Entregue em",
  "gf05": "Pasta de trabalho",
- "gf06": "{0} arquivos"
+ "gf06": "{0} arquivos",
+ "gf07": "Na primeira configuração, clique em «Instalar». O QuChen usa o Python incluído para instalar o gateway localmente; depois, basta iniciá-lo.",
+ "gf08": "Mais {0} podem ser ativados adicionando chaves de API",
+ "gf09": "Instale apenas quando precisar acessar o GitHub; o chat e o gateway funcionam sem isso. Arquivos Setup.exe oficiais e ZIP portáteis são suportados, com testes de velocidade e progresso do download.",
+ "gf10": "Um reprodutor de música independente que você pode iniciar aqui após a instalação. O chat de IA do Radio usa modelos do QuChen-AI e não inicia outro serviço de IA.",
+ "gf11": "Você pode usar o QuChen sem um motor local: pule esta etapa e ative o gateway gratuito na página de serviços de API ou sincronize-o com o DeepSeek Harness.",
+ "gf12": "Gateway de modelos gratuito e ferramentas opcionais"
 }

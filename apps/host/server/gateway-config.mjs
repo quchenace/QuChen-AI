@@ -298,10 +298,18 @@ export function buildGatewayConfig(env = {}, { includeAll = false, ofm = null, c
   if (freeGroup.length) groups.free = freeGroup;
   lines.push('', '  # --- 别名组 ---');
   for (const [group, members] of Object.entries(groups)) {
+    let count = 0;
     for (const member of members) {
       const record = by.get(member);
       if (!record) continue;                                  // an upstream whose key is not there yet
       lines.push(block({ ...record, name: group, note: '组：' + group }));
+      count += 1;
+    }
+    // Keep every public alias selectable even when all of its keyed upstreams are absent. The keyless
+    // deployment is already written above and router_settings also gives it the normal fallback chain.
+    if (!count) {
+      const fallback = by.get('pollinations-fast');
+      if (fallback) lines.push(block({ ...fallback, name: group, note: '组：' + group + '（免 key 兜底）' }));
     }
   }
 
@@ -319,7 +327,13 @@ export function buildGatewayConfig(env = {}, { includeAll = false, ofm = null, c
     const chain = [fallbackTarget, 'pollinations-fast'].filter((x, i, a) => x !== name && a.indexOf(x) === i);
     return chain.length ? '    - ' + q(name) + ': [' + chain.map(q).join(', ') + ']' : null;
   };
-  const fallbackTargets = [...new Set([...written.map((w) => w.name), ...Object.keys(groups)])];
+  // The ofm/… rows are written by this file too, so they need the line as well: without it a plugin lane
+  // that just hit its free quota answers "No fallback was attempted" instead of trying the keyless one.
+  const fallbackTargets = [...new Set([
+    ...written.map((w) => w.name),
+    ...Object.keys(groups),
+    ...ofmModels.map((m) => 'ofm/' + m.id),
+  ])];
   lines.push('',
     'router_settings:',
     '  num_retries: 2',

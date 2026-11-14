@@ -4,5 +4,11 @@
  "gf03": "Cierre otros programas e inténtelo de nuevo, o elija «Dejar espacio para mi trabajo». En el modo experto también puede activar la opción de poca RAM, para que una parte del modelo se lea desde el SSD.",
  "gf04": "Entregado en",
  "gf05": "Carpeta de trabajo",
- "gf06": "{0} archivos"
+ "gf06": "{0} archivos",
+ "gf07": "Para la primera configuración, haz clic en «Instalar». QuChen usa su Python incluido para instalar la pasarela localmente; después, solo tienes que iniciarla.",
+ "gf08": "{0} más se pueden habilitar añadiendo claves de API",
+ "gf09": "Instálalo solo cuando necesites acceder a GitHub; el chat y la pasarela funcionan sin él. Se admiten archivos Setup.exe oficiales y ZIP portátiles, con pruebas de velocidad y progreso de descarga.",
+ "gf10": "Un reproductor de música independiente que puedes iniciar aquí después de instalarlo. El chat de IA de Radio usa modelos de QuChen-AI y no inicia otro servicio de IA.",
+ "gf11": "Puedes usar QuChen sin un motor local: omite este paso y luego activa la pasarela gratuita en la página de servicios API o sincronízala con DeepSeek Harness.",
+ "gf12": "Pasarela de modelos gratuita y herramientas opcionales"
 }

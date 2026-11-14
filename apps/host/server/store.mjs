@@ -1,6 +1,6 @@
 import { migrateSetup } from './setup.mjs';
 /** Tiny persisted state for the host: one JSON file under QUCHEN_HOME. */
-import { accessSync, constants, mkdirSync, readFileSync, writeFileSync, existsSync, realpathSync, readdirSync, statSync, statfsSync, symlinkSync } from 'node:fs';
+import { accessSync, constants, mkdirSync, readFileSync, writeFileSync, existsSync, realpathSync, readdirSync, statSync, statfsSync, symlinkSync, lstatSync } from 'node:fs';
 import { alignModels, isDriveRoot, libraryFolderFromPick, makeFolder } from './model-folder.mjs';
 import { dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
 import { homedir } from 'node:os';
@@ -91,15 +91,18 @@ export function nativeDataDirectory(input) {
  if(!input||!existsSync(input))return input;
  if(MODELS_DIR_NOTICE)return input;
  const root=realpathSync(input),legacy=realpathSync(join(HOME,'models'));
+ const same=(a,b)=>process.platform==='win32'?a.toLowerCase()===b.toLowerCase():a===b;
  // Retained legacy libraries are model folders too, not native data roots.
  // A named data root satisfies the installer's guard; its alias leaves weights in place.
- if(root===legacy){
+ if(same(root,legacy)){
   const data=join(HOME,'QuChen-data'),nativeModels=join(data,'models');
+  const conflict=()=>new Error('The model folder conflicts with another library. Choose a different folder.');
   mkdirSync(data,{recursive:true});
   // Unlike a fresh default, a retained library must not fall back to an empty folder if linking fails.
-  if(!existsSync(nativeModels))symlinkSync(process.platform==='win32'?root:relative(data,root),nativeModels,process.platform==='win32'?'junction':'dir');
+  if(!lstatSync(nativeModels,{throwIfNoEntry:false}))symlinkSync(process.platform==='win32'?root:relative(data,root),nativeModels,process.platform==='win32'?'junction':'dir');
+  let alias;try{alias=realpathSync(nativeModels);}catch{throw conflict();}
   const a=statSync(nativeModels),b=statSync(root);
-  if(realpathSync(nativeModels)!==root&&!(a.ino&&a.ino===b.ino&&a.dev===b.dev))throw new Error('The model folder conflicts with another library. Choose a different folder.');
+  if(!same(alias,root)&&!(a.ino&&a.ino===b.ino&&a.dev===b.dev))throw conflict();
   return data;
  }
  if(process.env.QUCHEN_MODELS_DIR||!existsSync(DEFAULT_MODELS_DIRECTORY)||root!==realpathSync(DEFAULT_MODELS_DIRECTORY))return input;

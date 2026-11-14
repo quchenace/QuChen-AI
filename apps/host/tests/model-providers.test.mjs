@@ -3,9 +3,22 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createModelProviders, normalizeBaseUrl, PROVIDER_CATALOG } from '../server/model-providers.mjs';
+import { createModelProviders, normalizeBaseUrl, providerApiModelId, providerApiModels, providerApiSelection, PROVIDER_CATALOG } from '../server/model-providers.mjs';
 import { createMockModelApi } from './mock-model-api.mjs';
 import { assertPrivate } from './helpers/assert-private.mjs';
+
+test('external API model IDs round-trip provider selections without exposing credentials', () => {
+  const id = providerApiModelId('connection:one', 'ofm/vendor:model/free');
+  assert.deepEqual(providerApiSelection(id), { connectionId: 'connection:one', modelId: 'ofm/vendor:model/free' });
+  assert.equal(providerApiSelection('local-model'), null);
+  assert.equal(providerApiSelection('quchen-api:broken'), null);
+  const rows = providerApiModels({ connections: [{ id: 'connection:one', name: 'Free gateway', models: [{ id: 'ofm/vendor:model/free', name: 'Free model', reasoning: true }] }] });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, id);
+  assert.equal(rows[0].meta.connection, 'Free gateway');
+  assert.equal(rows[0].meta.reasoning, true);
+  assert.equal('apiKey' in rows[0], false);
+});
 
 test('connections persist, redact keys, retain unchanged keys, and validate endpoints/models', async t => {
   const directory = mkdtempSync(join(tmpdir(), 'quchen-providers-'));

@@ -59,4 +59,7 @@ test('the generated config points ofm/<id> at the plugin gateway with the env ke
   assert.match(built.text, /api_key: "os\.environ\/OFM_GATEWAY_KEY"/);
   assert.equal(built.ofmModels, 1);
   assert.ok(built.models.includes('ofm/opencode/zen-free'));
+  // A plugin lane that just hit its quota has to fall back like any other row; without this line LiteLLM
+  // answered "No fallback was attempted" for every ofm/… model.
+  assert.match(built.text, /- "ofm\/opencode\/zen-free": \["pollinations-fast"\]/);
 });

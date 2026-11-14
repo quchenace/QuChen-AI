@@ -4,5 +4,11 @@
  "gf03": "Schließen Sie andere Programme und versuchen Sie es erneut, oder wählen Sie „Platz für meine Arbeit lassen“. Im Expertenmodus können Sie außerdem die Option für wenig Arbeitsspeicher aktivieren, sodass ein Teil des Modells von der SSD gelesen wird.",
  "gf04": "Geliefert nach",
  "gf05": "Arbeitsordner",
- "gf06": "{0} Dateien"
+ "gf06": "{0} Dateien",
+ "gf07": "Klicken Sie für die Ersteinrichtung auf „Installieren“. QuChen verwendet das mitgelieferte Python, um das Gateway lokal zu installieren; danach starten Sie es einfach.",
+ "gf08": "{0} weitere können durch Hinzufügen von API-Schlüsseln aktiviert werden",
+ "gf09": "Installieren Sie dies nur, wenn Sie Zugriff auf GitHub benötigen; Chat und Gateway funktionieren auch ohne. Offizielle Setup.exe- und portable ZIP-Dateien werden unterstützt, mit Geschwindigkeitstests und Download-Fortschritt.",
+ "gf10": "Ein eigenständiger Musikplayer, den Sie nach der Installation hier starten können. Der KI-Chat in Radio verwendet QuChen-AI-Modelle und startet keinen weiteren KI-Dienst.",
+ "gf11": "Sie können QuChen ohne lokale Engine verwenden: Überspringen Sie diesen Schritt und aktivieren Sie dann das kostenlose Gateway auf der Seite „API-Dienste“ oder synchronisieren Sie es mit DeepSeek Harness.",
+ "gf12": "Kostenloses Modell-Gateway und optionale Werkzeuge"
 }

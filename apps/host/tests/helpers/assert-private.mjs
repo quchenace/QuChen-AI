@@ -10,5 +10,9 @@ export function assertPrivate(path) {
   const sddl = execFileSync(join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoProfile', '-NonInteractive', '-Command', `(Get-Acl -LiteralPath '${path.replace(/'/g, "''")}').Sddl`],
     { encoding: 'utf8', timeout: 30000, windowsHide: true }).trim();
   const dacl = sddl.slice(sddl.indexOf('D:'));
-  assert.equal(dacl, `D:PAI(A;;FA;;;${currentUserSid()})`, `ACL is not owner-only: ${sddl}`);
+  const sid = currentUserSid();
+  const allowed = [`D:PAI(A;;FA;;;${sid})`];
+  // Windows writes the built-in Administrator account (RID 500) as the equivalent SDDL alias LA.
+  if (sid.endsWith('-500')) allowed.push('D:PAI(A;;FA;;;LA)');
+  assert.ok(allowed.includes(dacl), `ACL is not owner-only: ${sddl}`);
 }

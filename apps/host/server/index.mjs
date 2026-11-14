@@ -62,7 +62,7 @@ import { createNativeDrops } from './native-drop.mjs';
 import { createVisionProbe, effectiveVision, readsPicturesByDefault } from './vision-probe.mjs';
 import { RequestQueue } from './request-queue.mjs';
 import { selectSkills, skillInstructions } from './skill-selection.mjs';
-import { createModelProviders } from './model-providers.mjs';
+import { createModelProviders, providerApiModels, providerApiSelection } from './model-providers.mjs';
 import { createForkTimeskip } from './timeskip-fork.mjs';
 import { prepareOversized } from './oversize.mjs';
 import { createChatFolders, chatRootOf, openFile, resolveChatFile, previewFile, rawFile, createAttachments, withAttachments } from './chat-files.mjs';
@@ -1678,7 +1678,7 @@ async function api(req, res, path, method, url) {
   if (cancelMatch && method === 'POST') return json(res, 200, serving.cancel(cancelMatch[1]));
   // --- integrations: the harness profile, the free gateway, pausing the model -----------
   if (path === '/api/integrations' && method === 'GET') {
-    return json(res, 200, { harness: await integrations.harnessStatus(), gateway: await integrations.gatewayStatus(), vpn: await integrations.vpnStatus() });
+    return json(res, 200, { harness: await integrations.harnessStatus(), gateway: await integrations.gatewayStatus(), vpn: await integrations.vpnStatus(), radio: await integrations.radioStatus() });
   }
   if (path === '/api/integrations/harness' && method === 'POST') {
     const body = await readBody(req);
@@ -1730,6 +1730,18 @@ async function api(req, res, path, method, url) {
     const name = String(req.headers['x-file-name'] ?? 'QuChenVPN.zip').slice(0, 120);
     const bytes = await readRaw(req, 512 * 1024 * 1024);
     return json(res, 200, await integrations.vpnInstallFromFile(bytes, name));
+  }
+  if (path === '/api/integrations/radio' && method === 'GET') return json(res, 200, await integrations.radioStatus());
+  if (path === '/api/integrations/radio' && method === 'POST') {
+    const body = await readBody(req);
+    if (!integrations.passcodeOk(body?.password)) return error(res, 403, '口令不正确。');
+    try {
+      if (body?.action === 'install') return json(res, 200, await integrations.radioInstall());
+      if (body?.action === 'stop') return json(res, 200, await integrations.radioStop());
+      return json(res, 200, await integrations.radioStart());
+    } catch (e) {
+      return error(res, 400, e?.message ?? 'QUCHEN Radio 操作失败。');
+    }
   }
   if (path === '/api/integrations/bun' && method === 'GET') return json(res, 200, bunStatus());
   if (path === '/api/integrations/bun' && method === 'POST') {
@@ -2227,20 +2239,47 @@ async function api(req, res, path, method, url) {
 
 async function openai(req, res, path, method) {
   if (!serving.authorized(req)) return error(res, 401, 'Invalid API key');
-  if(native.state().instances.length){
-    if(path==='/v1/models'&&method==='GET')return json(res,200,{object:'list',data:native.state().instances.filter(i=>i.status==='ready').map(i=>({id:i.apiModelId,object:'model',owned_by:'quchen',meta:{instanceId:i.id,gpus:i.gpus,label:i.label,aliases:i.aliases}}))});
-    if(method==='POST'&&['/v1/chat/completions','/v1/messages','/v1/responses'].includes(path)){if(store.get().serving?.pauseServing)return error(res,503,'New API requests are paused.');if(path==='/v1/responses'&&!native.state().capabilities.responses)return error(res,501,'Update the native QuChen installation to use the Responses API.');return nativeGateway({req,res,path,body:await readBody(req,12*1024*1024),control:native,serving});}
-  }
-  if(path==='/v1/responses'&&method==='POST')return error(res,503,'Load a native QuChen model to use the Responses API.');
+  const nativeState = native.state();
+  const chatPath = path === '/v1/chat/completions' || path === '/v1/messages';
 
   if (path === '/v1/models' && method === 'GET') {
-    const runtime=runtimeState();
-    return json(res,200,{object:'list',data:runtime.instances.map(i=>({id:i.apiModelId,object:'model',created:Math.floor(new Date(i.loadedAt).getTime()/1000),owned_by:'quchen',meta:{label:i.family,context:i.memory.context,instanceId:i.id,gpuIds:i.gpuIds,mode:runtime.mode}}))});
+    let providers = modelProviders.list();
+    const hasGateway = providers.connections.some(c => c.name === 'QuChen 免费网关' && c.models.length);
+    if (!hasGateway && Date.now() - lastGatewayProbe > 10000) {
+      lastGatewayProbe = Date.now();
+      await integrations.ensureGatewayConnection().catch(() => null);
+      providers = modelProviders.list();
+    }
+    let local;
+    if (nativeState.instances.length) {
+      local = nativeState.instances.filter(i => i.status === 'ready').map(i => ({ id: i.apiModelId, object: 'model', owned_by: 'quchen', meta: { instanceId: i.id, gpus: i.gpus, label: i.label, aliases: i.aliases } }));
+    } else {
+      const runtime = runtimeState();
+      local = runtime.instances.map(i => ({ id: i.apiModelId, object: 'model', created: Math.floor(new Date(i.loadedAt).getTime() / 1000), owned_by: 'quchen', meta: { label: i.family, context: i.memory.context, instanceId: i.id, gpuIds: i.gpuIds, mode: runtime.mode } }));
+    }
+    return json(res, 200, { object: 'list', data: [...local, ...providerApiModels(providers)] });
   }
 
-  if ((path === '/v1/chat/completions' || path === '/v1/messages') && method === 'POST') {
+  let body = null;
+  let remoteModel = null;
+  if (method === 'POST' && (chatPath || path === '/v1/responses')) {
+    body = await readBody(req, 12 * 1024 * 1024);
     if (store.get().serving?.pauseServing) return error(res, 503, 'New API requests are paused. Resume them in Serving.');
-    const body = await readBody(req);
+    if (typeof body.model === 'string' && body.model.startsWith('quchen-api:')) {
+      remoteModel = providerApiSelection(body.model);
+      if (!remoteModel) return error(res, 400, 'Invalid QuChen API model ID.');
+      try { modelProviders.resolve(remoteModel); }
+      catch (err) { return error(res, 409, err.message); }
+      if (!chatPath) return error(res, 501, 'This API model uses /v1/chat/completions or /v1/messages, not /v1/responses.');
+    }
+    if (nativeState.instances.length && !remoteModel) {
+      if (path === '/v1/responses' && !nativeState.capabilities.responses) return error(res, 501, 'Update the native QuChen installation to use the Responses API.');
+      return nativeGateway({ req, res, path, body, control: native, serving });
+    }
+    if (path === '/v1/responses') return error(res, 503, 'Load a native QuChen model to use the Responses API.');
+  }
+
+  if (chatPath && method === 'POST') {
     const client = clientName(req);
     const anthropic = path === '/v1/messages';
     // An API client can say which workspace it is acting for; without it, a
@@ -2263,11 +2302,14 @@ async function openai(req, res, path, method) {
 
     if (!text) return error(res, 400, 'No user message found');
 
-    runtimeState();
     let loaded;
-    try{loaded=runtimeModels.resolve(body.model);}
-    catch(err){return error(res,409,err.message);}
-    loaded={...loaded,id:loaded.apiModelId};
+    if (remoteModel) loaded = { id: body.model, apiModelId: body.model };
+    else {
+      runtimeState();
+      try { loaded = runtimeModels.resolve(body.model); }
+      catch (err) { return error(res, 409, err.message); }
+      loaded = { ...loaded, id: loaded.apiModelId };
+    }
 
     const id = uid('chatcmpl');
     const created = Math.floor(Date.now() / 1000);
@@ -2281,7 +2323,9 @@ async function openai(req, res, path, method) {
       let usage = { tokensIn: null, tokensOut: null };
       const result = await runTurn({
         message: text,
-        runtimeModelId:loaded.apiModelId,
+        runtimeModelId: loaded.apiModelId,
+        remoteModel,
+        thinking: body.reasoning_effort ?? body.thinking ?? 'medium',
         history: messages.slice(0, -1),
         onFrame: (frame) => {
           if (frame.type === 'delta') out += frame.text;
@@ -2327,7 +2371,9 @@ async function openai(req, res, path, method) {
 
     await runTurn({
       message: text,
-      runtimeModelId:loaded.apiModelId,
+      runtimeModelId: loaded.apiModelId,
+      remoteModel,
+      thinking: body.reasoning_effort ?? body.thinking ?? 'medium',
       history: messages.slice(0, -1),
       workspaceId,
       onFrame: (frame) => {

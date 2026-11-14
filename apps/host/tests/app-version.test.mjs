@@ -23,7 +23,7 @@ test('every place that carries the app version carries the same one', async () =
   const lock = await readFile(join(desktop, 'src-tauri', 'Cargo.lock'), 'utf8');
   // Cargo.lock pins the crate's own version too: it is the one file nobody remembers to bump, so it is
   // the one this test exists for (it read 0.2.11 through three releases).
-  const locked = /\[\[package\]\]\nname = "quchen-desktop"\nversion = "([^"]+)"/.exec(lock)?.[1];
+  const locked = /\[\[package\]\]\r?\nname = "quchen-desktop"\r?\nversion = "([^"]+)"/.exec(lock)?.[1];
   assert.equal(cargo, desktopPkg, 'Cargo.toml and the desktop package');
   assert.equal(hostPkg, desktopPkg, 'the host reports the version the installer was built with');
   assert.equal(locked, desktopPkg, 'Cargo.lock agrees, so the release does not ship two versions');

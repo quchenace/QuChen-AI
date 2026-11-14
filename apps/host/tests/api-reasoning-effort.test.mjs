@@ -11,7 +11,9 @@ import {createModelProviders} from '../server/model-providers.mjs';
 import {createMockModelApi} from './mock-model-api.mjs';
 import {createVisionProbe} from '../server/vision-probe.mjs';
 import {ROOMY_HOST} from './helpers/hardware.mjs';
-const choices={Off:'none',Low:'low',Medium:'medium',High:'high',Max:'high'};
+// "Off" carries no effort field at all: "none" is outside the OpenAI-compatible enum and a provider
+// answers such a request with 400, which is what made gateway models look broken on Off.
+const choices={Off:null,Low:'low',Medium:'medium',High:'high',Max:'high'};
 const history=[{role:'user',content:'Earlier question'},{role:'assistant',content:'Earlier answer'}];
 async function fixture(t,options={}){
  const mock=await createMockModelApi(),directory=mkdtempSync(join(tmpdir(),'quchen-api-effort-'));
@@ -26,7 +28,7 @@ test('saved reasoning models receive all official composer choices with the rema
   const frames=[];await f.service.stream({selection:f.selection,message:'Next question',history,systemPrompt:'Fixture instructions',thinking,thinkingBudget:1234,onFrame:f=>frames.push(f)});
   const request=f.mock.requests.at(-1);
   assert.equal(request.path,'/v1/chat/completions');assert.equal(request.headers.authorization,'Bearer fixture-key');
-  assert.deepEqual(request.body,{model:'mock-reasoning',messages:[{role:'system',content:'Fixture instructions'},...history,{role:'user',content:'Next question'}],stream:true,reasoning_effort:effort});
+  assert.deepEqual(request.body,{model:'mock-reasoning',messages:[{role:'system',content:'Fixture instructions'},...history,{role:'user',content:'Next question'}],stream:true,...(effort?{reasoning_effort:effort}:{})});
   assert.equal(frames.at(-1).type,'done');
  }
 });
@@ -40,7 +42,7 @@ test('invalid or omitted efforts keep the provider default',async t=>{
 
 test('direct OpenRouter chat uses the same effort format and Max mapping as agent chat',async t=>{
  const f=await fixture(t,{kind:'provider',provider:'openrouter'});
- for(const [thinking,effort] of Object.entries({...choices,Max:'xhigh'})){
+ for(const [thinking,effort] of Object.entries({Off:'none',Low:'low',Medium:'medium',High:'high',Max:'xhigh'})){
   await f.service.stream({selection:f.selection,message:'Test',thinking,onFrame:()=>{}});
   const payload=f.mock.requests.at(-1).body;
   assert.deepEqual(payload.reasoning,{effort});
@@ -89,7 +91,7 @@ test('host forwards incoming composer choices using saved and probed support wit
   assert.equal(frames.some(f=>f.type==='error'),false,JSON.stringify(frames));assert.equal(frames.at(-1).type,'done');
   const request=mock.requests.filter(r=>r.path==='/v1/chat/completions').at(-1);
   assert.equal(request.body.model,model.id);assert.equal(request.headers.authorization,'Bearer fixture-key');assert.deepEqual(request.body.messages.slice(-3),[...history,{role:'user',content:'Next question'}]);
-  assert.equal(request.body.reasoning_effort,['plain','unknown'].includes(model.id)?undefined:effort);assert.equal(Object.hasOwn(request.body,'reasoning_budget_tokens'),false);
+  assert.equal(request.body.reasoning_effort,['plain','unknown'].includes(model.id)?undefined:(effort??undefined));assert.equal(Object.hasOwn(request.body,'reasoning_budget_tokens'),false);
  }
  assert.equal(readFileSync(join(home,'data','model-providers.json'),'utf8'),before);
  assert.equal(readFileSync(join(home,'spy.log'),'utf8'),'','no external requests or software acquisition');

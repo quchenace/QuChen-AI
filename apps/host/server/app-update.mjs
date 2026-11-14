@@ -18,6 +18,9 @@ import { execFile, spawn } from 'node:child_process';
 const RELEASES = 'https://api.github.com/repos/quchenace/QuChen-AI/releases?per_page=30';
 const ASSET = 'https://api.github.com/repos/quchenace/QuChen-AI/releases/assets/';
 const UA = { 'user-agent': 'quchen' };
+// The same relays the VPN downloader probes: api.github.com can answer while the CDN behind a release asset
+// is blocked, and then none of the GitHub routes delivers a byte.
+const GH_MIRRORS = ['https://ghproxy.net/', 'https://gh.nxnow.top/', 'https://ghfast.top/', 'https://gh-proxy.com/'];
 
 /** phase: idle | manifest | downloading | verifying | installing | done | error */
 let progress = { phase: 'idle', done: 0, total: 0, message: '', version: '' };
@@ -50,10 +53,21 @@ function clock(secs) {
   return Math.floor(secs / 60) + ' 分 ' + Math.round(secs % 60) + ' 秒';
 }
 
-/** Streamed, so the screen can show how far along it is — and how fast, so a slow line is visible. */
+/** A route that stops sending bytes for this long is abandoned so the next one can be tried. */
+const STALL_MS = 90000;
+
+/**
+ * Streamed, so the screen can show how far along it is — and how fast, so a slow line is visible. The
+ * signal fires only when no byte arrived for 90 s: a blocked host used to keep the request open for half an
+ * hour, which is why a click on "download" could look like nothing happened at all.
+ */
 async function downloadStreamed(url, destination, headers = {}) {
-  const res = await fetch(url, { redirect: 'follow', headers: { ...UA, ...headers }, signal: AbortSignal.timeout(1800000) });
-  if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+  const ctrl = new AbortController();
+  let stall = setTimeout(() => ctrl.abort(new Error('连接 90 秒没有数据')), STALL_MS);
+  const res = await fetch(url, { redirect: 'follow', headers: { ...UA, ...headers }, signal: ctrl.signal })
+    .catch((e) => { clearTimeout(stall); throw (e?.name === 'AbortError' ? new Error('连接 90 秒没有数据') : e); });
+  if (!res.ok || !res.body) { clearTimeout(stall); throw new Error('HTTP ' + res.status); }
+  clearTimeout(stall);
   const total = Number(res.headers.get('content-length') || 0);
   const t0 = Date.now();
   await new Promise((resolve, reject) => {
@@ -63,6 +77,8 @@ async function downloadStreamed(url, destination, headers = {}) {
     (async () => {
       try {
         for await (const chunk of res.body) {
+          clearTimeout(stall);
+          stall = setTimeout(() => ctrl.abort(new Error('连接 90 秒没有数据')), STALL_MS);
           const buf = Buffer.from(chunk);
           const done = progress.done + buf.length;
           const secs = (Date.now() - t0) / 1000;
@@ -78,9 +94,11 @@ async function downloadStreamed(url, destination, headers = {}) {
           if (!out.write(buf)) await new Promise((r) => out.once('drain', r));
         }
         out.end();
+        clearTimeout(stall);
       } catch (e) {
+        clearTimeout(stall);
         out.destroy();
-        reject(e);
+        reject(e?.name === 'AbortError' ? new Error('连接 90 秒没有数据') : e);
       }
     })();
   });
@@ -122,14 +140,20 @@ export function runnerScript(setup, log, version) {
     "$ErrorActionPreference = 'SilentlyContinue'",
     'function W($m) { Add-Content -LiteralPath ' + psQuote(log) + ' -Value ((Get-Date).ToString("s") + " " + $m) }',
     'W "--- update to ' + version + ' ---"',
-    "for ($i = 0; $i -lt 45; $i++) { if (-not (Get-Process -Name 'QuChen' -ErrorAction SilentlyContinue)) { break }; Start-Sleep -Seconds 1 }",
-    "Get-Process -Name 'QuChen' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue",
-    'Start-Sleep -Seconds 2',
     "$roots = @('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*', 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*', 'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*')",
     "$item = Get-ItemProperty $roots -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'QuChen' } | Select-Object -First 1",
     '$dir = $item.InstallLocation',
     "if ($dir) { $dir = $dir.Trim('\"') }",
     'W ("install dir: " + $dir)',
+    // The exe is not called QuChen.exe: the bundle ships quchen-desktop.exe, so a name-based kill never
+    // closed the app (the installer then could not replace a running binary) and a name-based relaunch
+    // always looked for a file that does not exist. Take the biggest exe in the install folder instead,
+    // and stop everything running out of that folder.
+    "if ($dir) { $exe = Get-ChildItem -LiteralPath $dir -Filter *.exe -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch '^(unins|uninstall)' } | Sort-Object Length -Descending | Select-Object -First 1 -ExpandProperty FullName }",
+    'function Running { if (-not $dir) { return @() }; @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.ToLower().StartsWith($dir.ToLower()) }) }',
+    'for ($i = 0; $i -lt 45; $i++) { if (-not (Running).Count) { break }; Start-Sleep -Seconds 1 }',
+    'Running | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }',
+    'Start-Sleep -Seconds 2',
     "$setupArgs = @('/S', '/NS')",
     // /D wins over the installer's default folder and has to come last; Inno-style quoting breaks it.
     "if ($dir -and ($dir -notmatch ' ')) { $setupArgs += ('/D=' + $dir) }",
@@ -137,8 +161,7 @@ export function runnerScript(setup, log, version) {
     'W ("installer exit " + $proc.ExitCode)',
     'if ($proc.ExitCode -eq 0) {',
     '  Start-Sleep -Seconds 2',
-    "  $exe = if ($dir) { Join-Path $dir 'QuChen.exe' } else { '' }",
-    "  if ($exe -and (Test-Path -LiteralPath $exe)) { Start-Process -FilePath $exe; W 'relaunched' } else { W 'app exe not found, relaunch skipped' }",
+    "  if ($exe -and (Test-Path -LiteralPath $exe)) { Start-Process -FilePath $exe; W ('relaunched ' + $exe) } else { W 'app exe not found, relaunch skipped' }",
     '} else {',
     '  W ("install failed: exit " + $proc.ExitCode)',
     '}',
@@ -174,6 +197,9 @@ export async function installAppUpdate() {
   const routes = [];
   if (asset.id) routes.push({ url: ASSET + asset.id, headers: { accept: 'application/octet-stream' }, label: 'GitHub API' });
   if (asset.browser_download_url) routes.push({ url: asset.browser_download_url, headers: {}, label: 'GitHub' });
+  if (asset.browser_download_url) {
+    for (const mirror of GH_MIRRORS) routes.push({ url: mirror + asset.browser_download_url, headers: {}, label: '镜像 ' + new URL(mirror).host });
+  }
   const failures = [];
   let fetched = false;
   for (const route of routes) {

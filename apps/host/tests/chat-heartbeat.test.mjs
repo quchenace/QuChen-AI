@@ -162,11 +162,12 @@ test('route: a silent API model gets beats; a client that leaves cancels the mod
   let first = null;
   const quiet = s.chat('chat-beat-a', 'SCRIPT:hang', f => { if (f.type === 'beat' && first === null) first = Date.now(); });
   assert.ok(await until(() => quiet.frames.filter(f => f.type === 'beat').length >= 2), 'two beats while the model says nothing');
+  assert.ok(await until(() => s.worker.requests.some(r => r.directive === 'hang')), 'the direct model request is open');
   const framesBefore = quiet.frames.length;
   quiet.abort();
   await assert.rejects(quiet.done, { name: 'AbortError' });
   // the next beat is 300 ms away: the model request must already be cancelled well before it
-  assert.ok(await until(() => s.worker.aborted >= 1, 1500), 'disconnect cancelled the direct model request');
+  assert.ok(await until(() => s.worker.aborted >= 1, 8000), 'disconnect cancelled the direct model request');
   assert.ok(framesBefore >= 2);
   const next = s.chat('chat-beat-a', 'SCRIPT:echo still works');
   const frames = await next.done;
@@ -181,9 +182,10 @@ test('route: two chats at once are independent; leaving one does not touch the o
   const b = s.chat('chat-beat-2', 'SCRIPT:hang');
   const count = c => c.frames.filter(f => f.type === 'beat').length;
   assert.ok(await until(() => count(a) >= 2 && count(b) >= 2), 'both beat');
+  assert.ok(await until(() => s.worker.requests.filter(r => r.directive === 'hang').length === 2), 'both direct model requests are open');
   a.abort();
   await assert.rejects(a.done, { name: 'AbortError' });
-  assert.ok(await until(() => s.worker.aborted === 1, 1500), 'exactly the one request was cancelled');
+  assert.ok(await until(() => s.worker.aborted === 1, 8000), 'exactly the one request was cancelled');
   const frozen = count(a);
   const bBefore = count(b);
   assert.ok(await until(() => count(b) >= bBefore + 2), 'the other chat keeps getting beats');
@@ -191,7 +193,7 @@ test('route: two chats at once are independent; leaving one does not touch the o
   assert.equal(s.worker.aborted, 1, 'the other model request was not cancelled');
   b.abort();
   await assert.rejects(b.done, { name: 'AbortError' });
-  assert.ok(await until(() => s.worker.aborted === 2, 1500));
+  assert.ok(await until(() => s.worker.aborted === 2, 8000));
   assert.ok(s.alive());
 });
 

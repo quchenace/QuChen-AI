@@ -12,9 +12,9 @@ test('the health check probes the aliases and free lanes, and recommends the wor
   };
   const models = ['deepseek-v4.1-flash', 'pollinations-fast', 'ofm/our-free-model/opencode/flint-free', 'openrouter/some-model'];
   const out = await checkGatewayHealth({ baseUrl: 'http://127.0.0.1:4000/v1', key: 'k', models, force: true, fetcher });
-  assert.deepEqual(seen.sort(), ['deepseek-v4.1-flash', 'ofm/our-free-model/opencode/flint-free', 'pollinations-fast'].sort());
-  assert.equal(out.ready, 2);
-  assert.equal(out.total, 3);
+  assert.deepEqual(seen.sort(), ['deepseek-v4.1-flash', 'ofm/our-free-model/opencode/flint-free', 'openrouter/some-model', 'pollinations-fast'].sort());
+  assert.equal(out.ready, 3);
+  assert.equal(out.total, 4);
   assert.equal(out.best[0].ok, true);
   assert.ok(out.best.length >= 1);
 });

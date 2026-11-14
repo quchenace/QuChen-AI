@@ -410,9 +410,9 @@ const GATEWAY_LANES = ['deepseek-v4.1-flash', 'deepseek-v4.1-flash-think', 'fast
  */
 function preferGatewayModel() {
   const p = state.providers;
-  if (!p) return;
+  if (!p || !Array.isArray(p.connections)) return;
   if (state.library?.loaded) return;
-  if (state.native?.instances?.some(i => i.status === 'ready' || i.status === 'loading')) return;
+  if (nativeState()?.instances?.some(i => i.status === 'ready' || i.status === 'loading')) return;
   // A previously chosen API model can outlive its connection (deleted, or the gateway came back with new
   // ids): keep the choice only while it still resolves, otherwise fall through and pick a working one.
   const stillThere = !!state.remoteModel && p.connections.some(c => c.id === state.remoteModel!.connectionId && c.models.some(m => m.id === state.remoteModel!.modelId));

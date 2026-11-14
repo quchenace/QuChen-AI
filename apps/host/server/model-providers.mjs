@@ -50,6 +50,40 @@ export function normalizeBaseUrl(value) {
 const publicConnection = ({ apiKey, ...connection }) => ({ ...connection, apiKeySet: !!apiKey });
 const numeric = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 
+const EXTERNAL_MODEL_PREFIX = 'quchen-api:';
+/** Stable, unambiguous IDs for API clients: provider model IDs may themselves contain slashes or colons. */
+export function providerApiModelId(connectionId, modelId) {
+  return EXTERNAL_MODEL_PREFIX + encodeURIComponent(connectionId) + ':' + encodeURIComponent(modelId);
+}
+export function providerApiSelection(value) {
+  if (typeof value !== 'string' || !value.startsWith(EXTERNAL_MODEL_PREFIX)) return null;
+  const rest = value.slice(EXTERNAL_MODEL_PREFIX.length);
+  const split = rest.indexOf(':');
+  if (split <= 0 || split === rest.length - 1) return null;
+  try {
+    return { connectionId: decodeURIComponent(rest.slice(0, split)), modelId: decodeURIComponent(rest.slice(split + 1)) };
+  } catch {
+    return null;
+  }
+}
+export function providerApiModels(providers) {
+  return (providers?.connections ?? []).flatMap(connection => (connection.models ?? []).map(model => ({
+    id: providerApiModelId(connection.id, model.id),
+    object: 'model',
+    owned_by: 'quchen-api',
+    meta: {
+      connectionId: connection.id,
+      connection: connection.name,
+      modelId: model.id,
+      label: model.name,
+      contextMax: model.contextMax,
+      maxOutput: model.maxOutput,
+      reasoning: model.reasoning,
+      vision: model.vision,
+    },
+  })));
+}
+
 export function createModelProviders({ directory, changed = () => {}, fetchImpl = fetch, knownThinks = () => null }) {
   mkdirSync(directory, { recursive: true });
   const file = join(directory, 'model-providers.json');
@@ -157,10 +191,12 @@ export function createModelProviders({ directory, changed = () => {}, fetchImpl 
         ? { model: model.id, input: messages, instructions: systemPrompt, stream: true, store: false }
         : { model: model.id, messages: [...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []), ...messages], stream: true, ...(['openai', 'deepseek', 'openrouter', 'google', 'moonshotai'].includes(connection.provider) ? { stream_options: { include_usage: true } } : {}) };
     // Match the native composer's effort names. Unknown support and other protocols keep provider defaults.
+    // "Off" is not sent to a plain OpenAI-compatible endpoint: "none" is not in its enum and providers
+    // reject the whole request with 400, which is how a gateway model looked broken when set to Off.
     const choice = typeof thinking === 'string' ? thinking.toLowerCase() : '';
     if (protocol === 'openai-chat' && (model.reasoning ?? knownThinks(connection, model.id)) === true && ['off', 'low', 'medium', 'high', 'max'].includes(choice)) {
       if (isOpenRouter(connection)) payload.reasoning = { effort: OPENROUTER_EFFORTS[choice] };
-      else payload.reasoning_effort = ({ off: 'none', max: 'high' })[choice] ?? choice;
+      else if (choice !== 'off') payload.reasoning_effort = ({ max: 'high' })[choice] ?? choice;
     }
     const requestSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(10 * 60 * 1000)]) : AbortSignal.timeout(10 * 60 * 1000);
     const res = await request(connection, protocol === 'anthropic' ? 'messages' : protocol === 'openai-responses' ? 'responses' : 'chat/completions', { method: 'POST', body: JSON.stringify(payload), signal: requestSignal });

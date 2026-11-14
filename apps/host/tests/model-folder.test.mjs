@@ -70,7 +70,8 @@ test('Windows: a drive picked as D:\\ becomes D:\\QuChen, and the person is not 
   const dir = scratch(t);
   const letter = 'QRSTUVWXYZ'.split('').find(l => !existsSync(`${l}:\\`));
   assert.ok(letter, 'a free drive letter');
-  execFileSync('subst', [`${letter}:`, dir]);
+  const mapping = spawnSync('subst', [`${letter}:`, dir], { encoding: 'utf8' });
+  if (mapping.status !== 0) { t.skip(`Windows drive mapping is unavailable: ${(mapping.stdout || mapping.stderr).trim()}`); return; }
   t.after(() => { try { execFileSync('subst', [`${letter}:`, '/D']); } catch { /* gone */ } });
   const f = nativeFixture();
   t.after(() => f.cleanup());
@@ -87,7 +88,8 @@ function readdirNames(dir) { return execFileSync('cmd', ['/c', 'dir', '/b', dir]
 test('Windows: the model library on a whole drive goes to X:\\QuChen\\Models', { skip: process.platform !== 'win32' }, t => {
   const dir = scratch(t), home = scratch(t);
   const letter = 'QRSTUVWXYZ'.split('').find(l => !existsSync(`${l}:\\`));
-  execFileSync('subst', [`${letter}:`, dir]);
+  const mapping = spawnSync('subst', [`${letter}:`, dir], { encoding: 'utf8' });
+  if (mapping.status !== 0) { t.skip(`Windows drive mapping is unavailable: ${(mapping.stdout || mapping.stderr).trim()}`); return; }
   t.after(() => { try { execFileSync('subst', [`${letter}:`, '/D']); } catch { /* gone */ } });
   const cwd = fileURLToPath(new URL('..', import.meta.url));
   const drive = `${letter}:\\`;

@@ -20,7 +20,7 @@ import { createConnection } from 'node:net';
 // Written at build time from a repository secret: the owner's key, shipped so the gateway works out of the box.
 import { DEFAULT_OPENROUTER_KEY } from './default-key.mjs';
 // The free-model catalogue of the dsh-our-free-model plugin, and the LiteLLM config built from it.
-import { buildGatewayConfig, describeGatewayConfig, freeModelCatalogue, gatewayThinks, installedCatalogue, parseEnv, envText } from './gateway-config.mjs';
+import { buildGatewayConfig, describeGatewayConfig, freeModelCatalogue, installedCatalogue, parseEnv, envText } from './gateway-config.mjs';
 import { ofmModels, ofmStatus } from './ofm-gateway.mjs';
 import { checkGatewayHealth, configureGatewayHealth, gatewayHealthStatus, startGatewayHealth, stopGatewayHealth } from './gateway-health.mjs';
 
@@ -81,7 +81,10 @@ export function attachProviders(store) {
 export async function ensureGatewayConnection() {
   if (!providerStore) return null;
   const gateway = await gatewayStatus();
-  if (!gateway.models.length) return null;
+  // Only a gateway that is actually listening can serve a chat: the on-disk config lists models even when
+  // the process is down, and registering those put dead models in the picker (every one answered
+  // ECONNREFUSED). The startup retry keeps trying until the gateway is up.
+  if (!gateway.running || !gateway.models.length) return null;
   const list = providerStore.list();
   const existing = list.connections.find((c) => c.name === 'QuChen 免费网关');
   try {
@@ -92,9 +95,11 @@ export async function ensureGatewayConnection() {
       baseUrl: 'http://127.0.0.1:' + GATEWAY_PORT + '/v1',
       protocol: 'openai-chat',
       apiKey: gatewayKey(),
-      // `reasoning` is what shows the reasoning level menu for a gateway model: the gateway's /v1/models
-      // does not advertise it, so the name decides.
-      models: gateway.models.map((id) => ({ id, name: id, reasoning: gatewayThinks(id) })),
+      // `reasoning` is what shows the reasoning level menu for a gateway model. The gateway's /v1/models
+      // does not advertise it, and a name-based guess left the default lane ("deepseek-v4.1-flash") with
+      // no menu at all. LiteLLM runs with drop_params, so asking every lane on makes the choice reach the
+      // upstreams that take it and get dropped by the ones that do not.
+      models: gateway.models.map((id) => ({ id, name: id, reasoning: true })),
     });
     return providerStore.list().connections.find((c) => c.name === 'QuChen 免费网关') ?? null;
   } catch (e) {
@@ -565,6 +570,9 @@ function vpnExe() {
 
 /** Live progress of the download/install, read by the panel. */
 let vpnProgress = { phase: 'idle', done: 0, total: 0, message: '' };
+function vpnReport(patch) {
+  vpnProgress = { ...vpnProgress, ...patch };
+}
 
 function vpnRunning() {
   return new Promise((resolve) => execFile('tasklist.exe', ['/FI', 'IMAGENAME eq QuChenVPN.exe', '/NH'], { windowsHide: true },
@@ -577,15 +585,19 @@ export async function vpnStatus() {
 }
 
 /** The release metadata: direct first, then through the system proxy (a plain fetch ignores it). */
-async function vpnRelease() {
-  const url = 'https://api.github.com/repos/' + VPN_REPO + '/releases/latest';
+async function githubRelease(repo, cacheName) {
+  const url = 'https://api.github.com/repos/' + repo + '/releases/latest';
   try {
     const res = await fetch(url, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'quchen' }, signal: AbortSignal.timeout(15000) });
     if (res.ok) return await res.json();
   } catch { /* blocked without a proxy: retried below */ }
-  const file = join(tmpdir(), 'quchen-vpn-release.json');
+  const file = join(tmpdir(), cacheName);
   await downloadWithProxy(url, file);
   try { return JSON.parse(readFileSync(file, 'utf8')); } finally { try { rmSync(file, { force: true }); } catch { /* stays */ } }
+}
+
+async function vpnRelease() {
+  return githubRelease(VPN_REPO, 'quchen-vpn-release.json');
 }
 
 /**
@@ -629,13 +641,13 @@ const GH_MIRRORS = [
  * Every address worth trying, fastest measured first, then the ones that did not answer the probe, and
  * the system proxy last (it is what the VPN itself provides, so it is there when nothing else is).
  */
-async function assetCandidates(url) {
+async function assetCandidates(url, report = vpnReport, message = '') {
   const list = [{ url, label: '直连' }, ...GH_MIRRORS.map((m) => ({ url: m.prefix + url, label: m.label }))];
   const probed = await Promise.all(list.map(async (c) => ({ ...c, speed: await probeSpeed(c.url) })));
   const fast = probed.filter((c) => c.speed).sort((a, b) => b.speed.bps - a.speed.bps);
   const slow = probed.filter((c) => !c.speed);
   const order = [...fast, ...slow];
-  if (order.length) vpnProgress = { ...vpnProgress, message: vpnProgress.message + ' · 走 ' + order[0].label };
+  if (order.length) report({ message: message + ' · 走 ' + order[0].label });
   order.push({ url: null, label: '系统代理' });
   return order;
 }
@@ -651,16 +663,16 @@ const DL_CONNECTIONS = 8;
  * ranged request (no 206) or the size is unknown; throws when a range keeps failing, so the caller can use
  * the next mirror.
  */
-export async function streamAssetParallel(url, file, total, message) {
+export async function streamAssetParallel(url, file, total, message, report = vpnReport) {
   const head = await fetch(url, { headers: { range: 'bytes=0-0', 'user-agent': 'quchen' }, signal: AbortSignal.timeout(15000) });
   if (head.status !== 206) {
     try { await head.body?.cancel(); } catch { /* none */ }
-    return streamAsset(url, file, total, message);
+    return streamAsset(url, file, total, message, report);
   }
   const range = /\/(\d+)\s*$/.exec(head.headers.get('content-range') || '');
   const size = Number(range?.[1] || total || 0);
   try { await head.body?.cancel(); } catch { /* none */ }
-  if (!size || size < DL_MIN_PARALLEL) return streamAsset(url, file, total || size, message);
+  if (!size || size < DL_MIN_PARALLEL) return streamAsset(url, file, total || size, message, report);
 
   const fd = openSync(file, 'w');
   ftruncateSync(fd, size);
@@ -688,7 +700,7 @@ export async function streamAssetParallel(url, file, total, message) {
             writeSync(fd, chunk, 0, chunk.length, pos);
             pos += chunk.length;
             done += chunk.length;
-            vpnProgress = { phase: 'downloading', done, total: size, message: message + ' · 多线程 ' + DL_CONNECTIONS };
+            report({ phase: 'downloading', done, total: size, message: message + ' · 多线程 ' + DL_CONNECTIONS });
           }
           if (pos !== end + 1) throw new Error('range ended early');
           break;
@@ -711,7 +723,7 @@ export async function streamAssetParallel(url, file, total, message) {
 }
 
 /** One candidate, streamed to disk with live progress. Throws when it cannot be finished. */
-async function streamAsset(url, file, total, message) {
+async function streamAsset(url, file, total, message, report = vpnReport) {
   const res = await fetch(url, { headers: { 'user-agent': 'quchen' }, signal: AbortSignal.timeout(1800000) });
   if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
   const size = Number(res.headers.get('content-length') || total || 0);
@@ -723,7 +735,7 @@ async function streamAsset(url, file, total, message) {
     if (end) break;
     appendFileSync(file, Buffer.from(value));
     done += value.length;
-    vpnProgress = { phase: 'downloading', done, total: size, message };
+    report({ phase: 'downloading', done, total: size, message });
   }
 }
 
@@ -731,17 +743,17 @@ async function streamAsset(url, file, total, message) {
  * Fetch one asset: the measured-fastest address first, every other one after it, and the system proxy
  * when the network only lets that through. Gives up on a short file rather than installing half of it.
  */
-async function vpnFetchAsset(url, file, total, message) {
-  const order = await assetCandidates(url);
+async function vpnFetchAsset(url, file, total, message, report = vpnReport) {
+  const order = await assetCandidates(url, report, message);
   let last = null;
   for (const candidate of order) {
     rmSync(file, { force: true });
     try {
       if (!candidate.url) {
-        vpnProgress = { phase: 'downloading', done: 0, total: total || 0, message: '改用系统代理…' };
+        report({ phase: 'downloading', done: 0, total: total || 0, message: '改用系统代理…' });
         await downloadWithProxy(url, file);
       } else {
-        await streamAssetParallel(candidate.url, file, total, message + (candidate.label && candidate.label !== '直连' ? '（' + candidate.label + '）' : ''));
+        await streamAssetParallel(candidate.url, file, total, message + (candidate.label && candidate.label !== '直连' ? '（' + candidate.label + '）' : ''), report);
       }
       const size = existsSync(file) ? statSync(file).size : 0;
       if (!size) throw new Error('没有拿到文件');
@@ -935,6 +947,146 @@ export async function vpnStop() {
   return { ...st, progress: { phase: 'idle', done: 0, total: 0, message: '已结束。' } };
 }
 
+/* ---------------------------------------------------------------- radio --- */
+// QUCHEN Radio stays a separate desktop app. QuChen only downloads its own NSIS release and controls
+// that executable; Radio's AI panel calls this host's OpenAI-compatible API instead of a second AI stack.
+const RADIO_REPO = 'quchenace/QUCHEN-Radio';
+const RADIO_EXE = 'QUCHEN Radio.exe';
+let radioProgress = { phase: 'idle', done: 0, total: 0, message: '' };
+function radioReport(patch) {
+  radioProgress = { ...radioProgress, ...patch };
+}
+
+export function radioHome() {
+  // Radio's NSIS installer rejects a new C: install when a D-Z drive exists, and its canonical
+  // folder is QUCHENRadio. Choose the same first available drive so a silent install from QuChen
+  // follows exactly the same rules as opening the installer directly.
+  for (const drive of 'DEFGHIJKLMNOPQRSTUVWXYZ') {
+    const root = drive + ':\\';
+    if (existsSync(root)) return join(root, 'QUCHENRadio');
+  }
+  return join(process.env.SystemDrive || 'C:', 'QUCHENRadio');
+}
+
+function radioDirs() {
+  const local = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local');
+  return [...new Set([
+    radioHome(),
+    join(process.env.SystemDrive || 'C:', 'QUCHENRadio'),
+    join(local, 'QuChen', 'tools', 'QUCHEN-Radio'),
+    join(local, 'Programs', 'QUCHEN Radio'),
+    join(process.env.ProgramFiles || 'C:/Program Files', 'QUCHEN Radio'),
+  ])];
+}
+
+function findRadioExe(dir, depth = 0) {
+  try {
+    const items = readdirSync(dir, { withFileTypes: true });
+    if (items.some(x => x.isFile() && x.name.toLowerCase() === RADIO_EXE.toLowerCase())) return join(dir, RADIO_EXE);
+    if (depth >= 2) return null;
+    for (const item of items) {
+      if (!item.isDirectory()) continue;
+      const hit = findRadioExe(join(dir, item.name), depth + 1);
+      if (hit) return hit;
+    }
+  } catch { /* try the next install location */ }
+  return null;
+}
+
+function radioExe() {
+  for (const dir of radioDirs()) {
+    const hit = findRadioExe(dir);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function radioRunning() {
+  return new Promise(resolve => execFile('tasklist.exe', ['/FI', 'IMAGENAME eq QUCHEN Radio.exe', '/NH'], { windowsHide: true },
+    (_error, out) => resolve(/QUCHEN Radio\.exe/i.test(out ?? ''))));
+}
+
+export async function radioStatus() {
+  const exe = radioExe();
+  return { dir: exe ? dirname(exe) : radioHome(), installed: !!exe, exe, running: await radioRunning(), progress: radioProgress };
+}
+
+export function radioAssetFor(assets) {
+  const asset = (assets ?? []).find(a => a?.browser_download_url && /^QUCHEN-Radio-Setup-.+\.exe$/i.test(a.name ?? ''));
+  return asset ? { asset, kind: '安装包' } : null;
+}
+
+function radioRunSetup(file, dir) {
+  return new Promise((resolve, reject) => {
+    // NSIS requires /D to be the final argument. spawn/libuv quotes the value when needed; adding our
+    // own quotes would make them part of the directory, just as the old Inno Setup bug did for VPN.
+    const child = spawn(file, ['/S', '/D=' + dir], { windowsHide: true });
+    child.on('error', reject);
+    child.on('exit', code => code === 0 ? resolve(null) : reject(new Error('安装程序返回 ' + code + '。安装包在 ' + file + '，也可以手动双击安装。')));
+  });
+}
+
+export async function radioInstall() {
+  if (['resolving', 'downloading', 'installing'].includes(radioProgress.phase)) throw new Error('QUCHEN Radio 已经在下载或安装。');
+  radioProgress = { phase: 'resolving', done: 0, total: 0, message: '正在查询最新版本…' };
+  try {
+    const release = await githubRelease(RADIO_REPO, 'quchen-radio-release.json');
+    const picked = radioAssetFor(release.assets);
+    if (!picked) throw new Error('作者还没有发布 QUCHEN-Radio-Setup-*.exe 安装包。');
+    const { asset } = picked;
+    const dir = radioHome();
+    mkdirSync(dir, { recursive: true });
+    if (await radioRunning()) await radioStop();
+    radioProgress = { phase: 'downloading', done: 0, total: asset.size ?? 0, message: '正在下载安装包 ' + asset.name + (asset.size ? '（约 ' + Math.round(asset.size / 1048576) + ' MB）' : '') };
+    const file = join(tmpdir(), asset.name.replace(/[^\w.\-]/g, '_'));
+    const size = await vpnFetchAsset(asset.browser_download_url, file, asset.size ?? 0, radioProgress.message, radioReport);
+    const want = String(asset.digest ?? '').toLowerCase();
+    if (want.startsWith('sha256:')) {
+      radioReport({ phase: 'installing', message: '正在核对安装包…' });
+      const got = await fileSha256(file);
+      if (got !== want.slice(7)) throw new Error('安装包校验失败（SHA-256 不符），已中止。');
+    }
+    radioReport({ phase: 'installing', done: size, total: asset.size ?? size, message: '正在运行安装包…' });
+    await radioRunSetup(file, dir);
+    try { rmSync(file, { force: true }); } catch { /* remains in temp */ }
+    let status;
+    for (let i = 0; i < 40; i++) {
+      await sleep(250);
+      status = await radioStatus();
+      if (status.installed) break;
+    }
+    if (!status?.installed) throw new Error('安装结束，但在 ' + dir + ' 里没找到 QUCHEN Radio.exe。');
+    radioProgress = { phase: 'done', done: size, total: asset.size ?? size, message: '安装完成' };
+    return { ...status, progress: radioProgress };
+  } catch (error) {
+    radioReport({ phase: 'error', message: error.message });
+    throw error;
+  }
+}
+
+export async function radioStart() {
+  const status = await radioStatus();
+  if (!status.exe) throw new Error('先安装 QUCHEN Radio。');
+  if (status.running) return status;
+  spawn(status.exe, [], { cwd: dirname(status.exe), detached: true, stdio: 'ignore' }).unref();
+  await sleep(900);
+  return radioStatus();
+}
+
+export async function radioStop() {
+  if (!(await radioRunning())) return radioStatus();
+  await new Promise(resolve => execFile('taskkill.exe', ['/IM', RADIO_EXE, '/T'], { windowsHide: true }, () => resolve(null)));
+  for (let i = 0; i < 12; i++) {
+    await sleep(500);
+    if (!(await radioRunning())) return radioStatus();
+  }
+  await new Promise(resolve => execFile('taskkill.exe', ['/IM', RADIO_EXE, '/T', '/F'], { windowsHide: true }, () => resolve(null)));
+  await sleep(600);
+  const status = await radioStatus();
+  if (status.running) throw new Error('QUCHEN Radio 还在运行，请先退出它再重试。');
+  return status;
+}
+
 /* ---------------------------------------------------------------- writing --- */
 
 function localName(id) {
@@ -1043,14 +1195,18 @@ export async function harnessStatus() {
   };
 }
 
+/** The four group names the app's chat asks for by default; a bad probe must not take them out. */
+const GATEWAY_ALIASES = new Set(['deepseek-v4.1-flash', 'deepseek-v4.1-flash-think', 'fast', 'zero', 'free']);
+
 /**
- * The gateway models worth writing into the harness profile: the lanes that answer right now come first, a
- * lane that just answered 429/5xx is kept but pushed to the back. Listing seven out-of-quota lanes first is
- * exactly why every synced model looked broken — the person tries them in order and all of them fail.
+ * The gateway models worth writing into the harness profile: the lanes that answer right now come first, and
+ * a lane that just answered 429/5xx is left out. Listing seven out-of-quota lanes is exactly why every
+ * synced model looked broken — the person tries them in order and all of them fail. A stopped gateway has
+ * nothing to offer at all: its config still lists models, but every one of them would fail to connect.
  */
 async function usableGatewayModels(gateway) {
   const models = Array.isArray(gateway.models) ? gateway.models : [];
-  if (!models.length) return [];
+  if (!gateway.running || !models.length) return [];
   let health = null;
   const base = 'http://127.0.0.1:' + GATEWAY_PORT + '/v1';
   try {
@@ -1062,8 +1218,10 @@ async function usableGatewayModels(gateway) {
   if (!results.length) return models;
   const okOrder = new Map(results.filter((r) => r.ok).map((r) => r.model).map((id, i) => [id, i]));
   const failing = new Set(results.filter((r) => !r.ok && (r.status === 429 || r.status >= 500 || r.status === 0)).map((r) => r.model));
-  const rank = (id) => (okOrder.has(id) ? 0 : failing.has(id) ? 2 : 1);
-  return [...models].sort((a, b) => (rank(a) - rank(b)) || ((okOrder.get(a) ?? 0) - (okOrder.get(b) ?? 0)));
+  const kept = models.filter((id) => !failing.has(id) || GATEWAY_ALIASES.has(id));
+  const list = kept.length ? kept : models;
+  const rank = (id) => (okOrder.has(id) ? 0 : 1);
+  return [...list].sort((a, b) => (rank(a) - rank(b)) || ((okOrder.get(a) ?? 0) - (okOrder.get(b) ?? 0)));
 }
 
 /** Write the profile from the live state. Used by the button and by the keep-in-sync watcher. */

@@ -6,7 +6,9 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { vpnAssetFor } from '../server/integrations.mjs';
+import { existsSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import { radioAssetFor, radioHome, vpnAssetFor } from '../server/integrations.mjs';
 
 const asset = (name) => ({ name, browser_download_url: 'https://example.invalid/' + name, size: 31_380_350 });
 
@@ -37,4 +39,24 @@ test('nothing usable in the release is reported, not thrown at a half-downloaded
   assert.equal(vpnAssetFor(undefined), null);
   assert.equal(vpnAssetFor([{ name: 'QuChenVPN-Setup.exe' }]), null, 'an asset without a URL is not installable');
   assert.equal(vpnAssetFor([null, { name: '', browser_download_url: 'x' }]), null);
+});
+
+test('Radio selects only its own NSIS installer, never update metadata or another app', () => {
+  const picked = radioAssetFor([
+    asset('QuChenVPN-Setup.exe'),
+    asset('QUCHEN-Radio-Setup-2.2.0.exe.blockmap'),
+    asset('latest.yml'),
+    asset('QUCHEN-Radio-Setup-2.2.0.exe'),
+  ]);
+  assert.equal(picked.kind, '安装包');
+  assert.equal(picked.asset.name, 'QUCHEN-Radio-Setup-2.2.0.exe');
+  assert.equal(radioAssetFor([asset('QUCHEN-Radio-Setup-2.2.0.exe.sig')]), null);
+  assert.equal(radioAssetFor([{ name: 'QUCHEN-Radio-Setup-2.2.0.exe' }]), null);
+});
+
+test('Radio default directory follows its NSIS preferred-drive and folder-name rules', () => {
+  const home = radioHome();
+  assert.equal(basename(home), 'QUCHENRadio');
+  const preferred = [...'DEFGHIJKLMNOPQRSTUVWXYZ'].find(drive => existsSync(drive + ':\\'));
+  if (preferred) assert.equal(home, join(preferred + ':\\', 'QUCHENRadio'));
 });

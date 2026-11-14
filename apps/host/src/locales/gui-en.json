@@ -4,5 +4,11 @@
  "gf03": "Close other programs and try again, or choose “Leave room for my work”. In Expert mode you can also turn on the low-RAM option, so part of the model is read from the SSD.",
  "gf04": "Delivered to",
  "gf05": "Working folder",
- "gf06": "{0} files"
+ "gf06": "{0} files",
+ "gf07": "For first-time setup, click Install. QuChen uses its bundled Python to install the gateway locally; after that, just start it.",
+ "gf08": "{0} more can be enabled by adding API keys",
+ "gf09": "Install this only when you need access to GitHub; chat and the gateway work without it. Official Setup.exe and portable zip files are supported, with speed tests and download progress.",
+ "gf10": "A standalone music player that you can launch here after installation. AI chat in Radio uses QuChen-AI models and does not start another AI service.",
+ "gf11": "You can use QuChen without a local engine: skip this step, then enable the free gateway on the API services page or sync it to DeepSeek Harness.",
+ "gf12": "Free model gateway and optional tools"
 }

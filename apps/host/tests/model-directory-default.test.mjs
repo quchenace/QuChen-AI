@@ -1,11 +1,16 @@
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,realpathSync,rmSync,symlinkSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,realpathSync,rmSync,symlinkSync,existsSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {defaultModelDirectory} from '../server/model-directory-default.mjs';
+
+function directoryLinksWork(){
+ const root=mkdtempSync(join(tmpdir(),'quchen-link-capability-'));
+ try{const target=join(root,'target'),alias=join(root,'alias');mkdirSync(target);symlinkSync(target,alias,process.platform==='win32'?'junction':'dir');return existsSync(alias)&&realpathSync(alias)===realpathSync(target);}catch{return false;}finally{try{rmSync(root,{recursive:true,force:true,maxRetries:5,retryDelay:20});}catch{/* a broken sandbox link is left for the temp cleaner */}}
+}
 test('macOS and Linux default to Documents/QuChen/Models',()=>{
  for(const platform of ['darwin','linux'])assert.equal(defaultModelDirectory({platform,home:'/home/me',env:{},read:()=>{throw new Error('no configuration');}}),'/home/me/Documents/QuChen/Models');
 });
@@ -19,6 +24,7 @@ test('Linux respects localized XDG Documents and rejects shell expressions',()=>
  assert.equal(defaultModelDirectory({platform:'linux',home:'/home/me',env:{XDG_DOCUMENTS_DIR:'$(echo /private)'},read:()=>''}),'/home/me/Documents/QuChen/Models');
 });
 test('new hosts create the default; custom folders and legacy weights remain in place',t=>{
+ if(!directoryLinksWork()){t.skip('Directory links are unavailable in this Windows command environment');return;}
  const root=realpathSync(mkdtempSync(join(tmpdir(),'quchen-documents-')));t.after(()=>rmSync(root,{recursive:true,force:true}));
  function boot(name,state,weights=false){const home=join(root,name),documents=join(root,name+'-documents');mkdirSync(join(home,'data'),{recursive:true});mkdirSync(join(home,'models'),{recursive:true});if(state)writeFileSync(join(home,'data','state.json'),JSON.stringify(state));if(weights){mkdirSync(join(home,'models','native','qwen'),{recursive:true});writeFileSync(join(home,'models','native','qwen','model.gguf'),'GGUFfixture');}const env={...process.env,QUCHEN_HOME:home,QUCHEN_DOCUMENTS_DIR:documents,QUCHEN_TEST_NATIVE:'1',QUCHEN_TEST_DEFAULT:join(documents,'QuChen','Models')};delete env.QUCHEN_MODELS_DIR;const result=spawnSync(process.execPath,['--input-type=module','-e',"const store=await import('./server/store.mjs');if(process.env.QUCHEN_TEST_NATIVE==='1'&&store.MODELS_DIR===process.env.QUCHEN_TEST_DEFAULT){const {statSync}=await import('node:fs');const {join}=await import('node:path');const native=store.nativeDataDirectory(store.MODELS_DIR);const a=statSync(join(native,'models')),b=statSync(store.MODELS_DIR);if(a.ino!==b.ino||a.dev!==b.dev)throw new Error('Native weights miss requested model folder');}console.log(store.MODELS_DIR);"],{cwd:fileURLToPath(new URL('..',import.meta.url)),env,encoding:'utf8',windowsHide:true});assert.equal(result.status,0,result.stderr);return {path:result.stdout.trim(),home,documents};}
  const fresh=boot('fresh');assert.equal(fresh.path,join(fresh.documents,'QuChen','Models'));
@@ -29,6 +35,7 @@ test('new hosts create the default; custom folders and legacy weights remain in 
 
 
 test('legacy model libraries resolve to a guarded native data root without moving weights',t=>{
+ if(!directoryLinksWork()){t.skip('Directory links are unavailable in this Windows command environment');return;}
  const root=realpathSync(mkdtempSync(join(tmpdir(),'quchen-legacy-models-')));t.after(()=>rmSync(root,{recursive:true,force:true}));
  for(const choice of ['detected','saved','environment']){
   const home=join(root,choice),models=join(home,'models');mkdirSync(join(home,'data'),{recursive:true});mkdirSync(models);
@@ -80,6 +87,7 @@ test('native data roots leave explicit custom libraries and new installer folder
 test('legacy native aliases never overwrite a conflicting library',t=>{
  const root=realpathSync(mkdtempSync(join(tmpdir(),'quchen-conflicting-models-')));t.after(()=>rmSync(root,{recursive:true,force:true}));
  for(const kind of ['directory','link']){
+ if(kind==='link'&&!directoryLinksWork()){t.diagnostic('Directory links are unavailable; the link conflict fixture is left to normal Windows CI');continue;}
  const home=join(root,kind),original=join(home,'models'),other=join(home,'other-library'),alias=join(home,'QuChen-data','models');mkdirSync(original,{recursive:true});mkdirSync(other);mkdirSync(join(home,'QuChen-data'));
  if(kind==='link')symlinkSync(other,alias,process.platform==='win32'?'junction':'dir');else mkdirSync(alias);
  writeFileSync(join(original,'original.gguf'),'GGUForiginal');writeFileSync(join(other,'other.gguf'),'GGUFother');
