@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>登录 · QuChen AI</title>
+<style>
+  :root{
+    --bg:#0d0f13; --panel:#15181f; --line:#252a34; --text:#e8ecf2; --dim:#8b93a3;
+    --accent:#4d8dff; --accent-hover:#3f7aee; --err:#ff6b6b; --ok:#3ecf8e;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:radial-gradient(1200px 600px at 50% -10%, #1a2130 0%, var(--bg) 60%);
+    color:var(--text); font:15px/1.55 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .card{
+    width:100%; max-width:392px; background:var(--panel); border:1px solid var(--line);
+    border-radius:16px; padding:28px 26px 22px; box-shadow:0 24px 64px rgba(0,0,0,.45);
+  }
+  .brand{display:flex; align-items:center; gap:10px; margin-bottom:20px}
+  .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#4d8dff,#8b5cf6);
+        display:grid;place-items:center;font-weight:700;font-size:15px;color:#fff}
+  .brand b{font-size:16px; letter-spacing:.2px}
+  .brand span{color:var(--dim); font-size:12px; margin-left:auto}
+  h1{font-size:19px; margin:0 0 6px; font-weight:600}
+  p.sub{margin:0 0 18px; color:var(--dim); font-size:13px}
+  label{display:block; font-size:12px; color:var(--dim); margin:14px 0 6px}
+  input{
+    width:100%; padding:11px 12px; border-radius:10px; border:1px solid var(--line);
+    background:#0f1218; color:var(--text); font-size:14px; outline:none; transition:border-color .15s;
+  }
+  input:focus{border-color:var(--accent)}
+  button{
+    width:100%; margin-top:20px; padding:11px 12px; border:0; border-radius:10px;
+    background:var(--accent); color:#fff; font-size:14px; font-weight:600; cursor:pointer;
+  }
+  button:hover{background:var(--accent-hover)}
+  button:disabled{opacity:.55; cursor:default}
+  .msg{margin-top:14px; font-size:13px; min-height:18px; color:var(--err)}
+  .msg.ok{color:var(--ok)}
+  .hint{margin-top:18px; padding-top:14px; border-top:1px solid var(--line); color:var(--dim); font-size:12px}
+  .hint code{color:#a9b4c6; font-size:11.5px}
+  .row{display:flex; gap:10px; align-items:center; margin-top:10px}
+  .row .ghost{background:transparent;border:1px solid var(--line);color:var(--dim);margin-top:0;width:auto;padding:7px 12px;font-weight:500}
+  .session{margin-top:14px;font-size:12.5px;color:var(--dim)}
+  .session b{color:var(--text);font-weight:600}
+</style>
+</head>
+<body>
+<form class="card" id="form" autocomplete="on">
+  <div class="brand">
+    <div class="logo">Q</div>
+    <b>QuChen AI</b>
+    <span id="appTag">登录墙</span>
+  </div>
+  <h1>登录 QuChen 账号</h1>
+  <p class="sub">本机应用统一账号，登录一次，四端通用。</p>
+
+  <label for="email">邮箱</label>
+  <input id="email" name="email" type="email" required autocomplete="username" placeholder="you@example.com">
+
+  <label for="password">密码</label>
+  <input id="password" name="password" type="password" required autocomplete="current-password" placeholder="账户密码">
+
+  <button id="submit" type="submit">登录</button>
+  <div class="msg" id="msg"></div>
+
+  <div class="session" id="session"></div>
+
+  <div class="hint">
+    账号服务：<code id="base">http://127.0.0.1:8788</code><br>
+    离线可用 30 天；超期或密码变更后需要重新联网登录。
+    <div class="row"><button class="ghost" type="button" id="signout">换账号 / 退出</button></div>
+  </div>
+</form>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var msg = $('msg'), btn = $('submit');
+
+  function say(text, ok) {
+    msg.textContent = text || '';
+    msg.className = 'msg' + (ok ? ' ok' : '');
+  }
+
+  function state() {
+    return fetch('/api/auth/state', { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (st) {
+        if (st.account_base) $('base').textContent = st.account_base;
+        if (st.app) $('appTag').textContent = st.app.toUpperCase();
+        if (st.email) {
+          $('session').innerHTML = '上次登录：<b>' + String(st.email).replace(/[<>&]/g, '') + '</b>' +
+            (st.offline_days ? '（离线 ' + st.offline_days + ' 天）' : '');
+        }
+        if (st.unlocked) { location.replace('/'); return; }
+        if (st.why === 'grace_expired') say('离线宽限期已过，请联网重新登录。');
+        if (st.why === 'revoked') say('会话已失效，请重新登录。');
+        return st;
+      })
+      .catch(function () { say('无法读取本机登录状态，请确认 QuChen AI 服务在运行。'); });
+  }
+
+  $('form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var email = $('email').value.trim(), password = $('password').value;
+    if (!email || !password) { say('请填写邮箱和密码。'); return; }
+    btn.disabled = true; say('正在登录…', true);
+    fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, password: password })
+    }).then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+      .then(function (res) {
+        if (!res.ok) {
+          var e = (res.body && res.body.error) || {};
+          var m = e.message || '登录失败';
+          if (e.code === 'unreachable') m = '账号服务未启动：' + m;
+          if (e.code === 'pending') m = '账号还在审批中，审批通过后即可登录。';
+          if (e.code === 'bad_credentials') m = '邮箱或密码不正确。';
+          say(m); btn.disabled = false; return;
+        }
+        say('登录成功，正在进入…', true);
+        location.replace('/');
+      })
+      .catch(function () { say('登录请求失败，请确认 QuChen AI 服务在运行。'); btn.disabled = false; });
+  });
+
+  $('signout').addEventListener('click', function () {
+    fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(function () { $('session').textContent = ''; say('已退出，请输入账号登录。', true); })
+      .catch(function () { say('退出失败。'); });
+  });
+
+  state();
+})();
+</script>
+</body>
+</html>

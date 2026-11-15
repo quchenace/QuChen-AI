@@ -81,6 +81,7 @@ from quchen_control import gpu_roles  # noqa: E402
 from serve import ready as ready_file  # noqa: E402
 from serve import owner_guard  # noqa: E402
 from serve import launch_identity  # noqa: E402
+from serve import authgate  # noqa: E402  QuChen account gate
 from serve import logit_bias as bias_api  # noqa: E402
 from serve import lifeline  # noqa: E402
 from serve.structured import StructuredOutputError, prepare_format, validated_json, extract_json  # noqa: E402
@@ -4782,6 +4783,10 @@ class Service:
         self.slot_save_path = None                    # --slot-save-path: /slots/0?action=save|restore (off when None)
         self.embeddings = threading.local()           # the current request's image embeddings file (GENI)
         self.api_key = ""                              # when set, /v1/* needs it (Bearer or x-api-key)
+        # QuChen account: the login wall (serve/authgate.py).  On unless the config's "auth_gate" is false or the
+        # server runs with --no-auth-gate (a test rig, or a machine whose account service is not wanted).
+        self.gate = authgate.Gate("ai", enabled=True)
+        self.auth_gate_on = True
         # #458 (opt-in, the config's "effort_position": "end"): a non-default reasoning effort goes in a short system
         # turn before the answer instead of the top of the prompt, so switching it keeps the cached conversation
         self.effort_end = False
@@ -7772,8 +7777,104 @@ def make_handler(svc: Service):
             self._json(401, {"error": {"type": "authentication_error", "message": "missing or wrong telemetry key"}})
             return False
 
+        # ---------------- QuChen account: the login wall (serve/authgate.py) ----------------
+        # The page and the local control endpoints (/settings, /slots, /config, MCP) need a signed-in QuChen account.
+        # /v1/* keeps its own api_key rules: a CLI or another QuChen app talking to this server is not a browser.
+        PAGE_PATHS = ("", "/index.html", "/monitor.html", "/monitor", "/app")
+        OPEN_PATHS = ("/api/auth/login", "/api/auth/state", "/favicon.ico")
+
+        def _gate_open(self, path: str) -> bool:
+            return path in self.OPEN_PATHS or path.startswith("/auth/") or path.startswith("/v1/") \
+                or path.startswith(("/web/", "/fonts/", "/tool-media/"))
+
+        def _gate_ok(self) -> bool:
+            if not svc.auth_gate_on:
+                return True
+            try:
+                return svc.gate.unlocked()
+            except Exception:                             # a broken session file must never lock the app out
+                return True
+
+        def _gate_page(self) -> bool:
+            """An unauthenticated browser gets the login page instead of the app (same origin, no redirect)."""
+            if self._gate_ok():
+                return True
+            body = (ROOT / "serve" / "web" / "login.html").read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return False
+
+        def _gate_api(self) -> bool:
+            if self._gate_ok():
+                return True
+            self._json(401, {"error": {"type": "auth_required",
+                                       "message": "sign in to your QuChen account to use this server"}})
+            return False
+
+        def _auth_page(self, path: str):
+            """The login page and its script, served without a session."""
+            name = {"/auth/login": "login.html", "/auth/login.html": "login.html",
+                    "/auth/gate.js": "gate.js"}.get(path)
+            f = (ROOT / "serve" / "web" / name) if name else None
+            if not f or not f.is_file():
+                self._json(404, {"error": {"message": "not found"}})
+                return
+            body = f.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/javascript; charset=utf-8" if f.suffix == ".js"
+                             else "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _auth_state(self):
+            st = svc.gate.reason()
+            st["account_base"] = svc.gate.base_url
+            st["app"] = svc.gate.app
+            st["grace_days"] = svc.gate.grace_days
+            self._json(200, st)
+
+        def _auth_login(self, body: dict):
+            email = (body.get("email") or "").strip()
+            password = body.get("password") or ""
+            if not email or not password:
+                self._json(400, {"error": {"type": "invalid_request_error",
+                                           "message": "email and password are required"}})
+                return
+            try:
+                state = svc.gate.login(email, password, device_name=body.get("device_name") or "QuChen AI")
+            except authgate.AuthError as e:
+                self._json(e.status if e.status in (400, 401, 403, 409, 429) else 503,
+                           {"error": {"type": "auth_failed", "code": e.code, "message": str(e)}})
+                return
+            self._json(200, {"ok": True, "email": state.get("email"), "role": state.get("role")})
+
+        def _auth_logout(self):
+            try:
+                svc.gate.logout()
+            except Exception:
+                pass
+            self._json(200, {"ok": True})
+
         def do_GET(self):
             path = self.path.split("?")[0].rstrip("/")
+            if path.startswith("/auth/"):
+                self._auth_page(path)
+                return
+            if path == "/api/auth/state":
+                self._auth_state()
+                return
+            if not self._gate_open(path):
+                if path in self.PAGE_PATHS:
+                    if not self._gate_page():
+                        return
+                elif not self._gate_api():
+                    return
             if path.startswith("/tool-media/"):
                 if not self._authorized():
                     return
@@ -8165,6 +8266,27 @@ def make_handler(svc: Service):
                 return
             path = self.path.split("?")[0].rstrip("/")   # issue #55: Claude Code posts /v1/messages?beta=true
             path = V1_V1_ALIASES.get(path, path)         # an Anthropic client given ".../v1" as its base posts /v1/v1/messages
+            if path.startswith("/api/auth/"):
+                # the login page's own endpoints: open (that is the point), JSON only, bounced to the account service
+                if not self._own_page("the account can be used"):
+                    return
+                body = {}
+                raw = self._body()
+                if raw:
+                    try:
+                        body = json.loads(raw)
+                    except ValueError:
+                        self._json(400, {"error": {"type": "invalid_request_error", "message": "body is not JSON"}})
+                        return
+                if path == "/api/auth/login":
+                    self._auth_login(body if isinstance(body, dict) else {})
+                elif path == "/api/auth/logout":
+                    self._auth_logout()
+                else:
+                    self._json(404, {"error": {"message": "not found"}})
+                return
+            if not path.startswith("/v1/") and not self._gate_api():
+                return
             if path.startswith("/v1/") and self._foreign_page():
                 return
             if path == "/settings":
@@ -9922,6 +10044,12 @@ def _main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> i
     ap.add_argument("--no-api-key", action="store_true",
                     help="serve on the network without an API key (anyone who can reach the port can use the model; "
                          "also \"api_key\": \"none\" in the config). Warns once, never refuses")
+    ap.add_argument("--no-auth-gate", action="store_true",
+                    help="do not require a QuChen account: the page and the local control endpoints open without one "
+                         "(also \"auth_gate\": false in the config, $QUCHEN_AUTH_GATE=off). Test rigs only")
+    ap.add_argument("--auth-base", default=os.environ.get("QUCHEN_AUTH_BASE", ""),
+                    help="the QuChen account service (default http://127.0.0.1:8788; \"auth_base\" in the config, "
+                         "$QUCHEN_AUTH_BASE)")
     ap.add_argument("--mcp-config", help="a JSON file with MCP servers in Claude Desktop's format ({\"mcpServers\": "
                                          "{...}}); the web app's chat can use their tools (also \"mcp_servers\" in "
                                          "the config)")
@@ -10265,6 +10393,16 @@ def _main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> i
     if svc.aliases:
         print(f"[quchen] model aliases: {', '.join(svc.aliases)}", flush=True)
     svc.api_key = preflight_api_key
+    # QuChen account: the login wall.  On by default; a test rig or an unattended kiosk can turn it off.
+    _gate_flag = cfg.get("auth_gate", os.environ.get("QUCHEN_AUTH_GATE", "on"))
+    svc.auth_gate_on = not (a.no_auth_gate or str(_gate_flag).strip().lower() in ("false", "off", "0", "no", "none"))
+    _auth_base = a.auth_base or str(cfg.get("auth_base") or "").strip()
+    if _auth_base:
+        svc.gate.base_url = _auth_base.rstrip("/")
+    svc.gate.enabled = svc.auth_gate_on
+    if not svc.auth_gate_on:
+        print("[quchen] the QuChen account gate is off: the page and the control endpoints need no login",
+              file=sys.stderr, flush=True)
     try:
         svc.telemetry_key = api_key_of(os.environ.get("QUCHEN_TELEMETRY_KEY") or cfg.get("telemetry_read_key", ""))
     except ValueError as e:
