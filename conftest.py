@@ -13,3 +13,7 @@ os.environ["XDG_CONFIG_HOME"] = _home
 os.environ["LOCALAPPDATA"] = _home
 os.environ["XDG_STATE_HOME"] = _home
 os.environ["XDG_DATA_HOME"] = _home
+# The QuChen account gate (serve/authgate.py) is on by default in production.  The suite drives the server directly
+# and asserts the pre-login-wall behaviour (page CSP, plain 404s, open control endpoints), so it runs with the gate
+# off for the whole session; the gate has its own tests (scripts/auth_gate_selftest.py, scripts/auth_wall_e2e.py).
+os.environ["QUCHEN_AUTH_GATE"] = "off"
