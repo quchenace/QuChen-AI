@@ -1,0 +1,71 @@
+/* The QuChen account wall: the window that stands before the app until someone signs in.
+   It fills the window on every layout, because the app behind it is not usable yet. */
+
+.authwall{
+  position:fixed; inset:0; z-index:60; display:grid; place-items:center;
+  padding:var(--st-s-6);
+  background:
+    radial-gradient(1100px 520px at 12% -8%, var(--st-accent-tint), transparent 62%),
+    radial-gradient(900px 460px at 96% 108%, var(--st-info-tint), transparent 58%),
+    var(--st-bg);
+  font-family:var(--st-font); color:var(--st-ink);
+  overflow:auto;
+}
+.authwall__panel{
+  width:min(430px,100%); display:flex; flex-direction:column; gap:var(--st-s-5);
+  padding:var(--st-s-8) var(--st-s-8) var(--st-s-6);
+  background:var(--st-surface); border:1px solid var(--st-line); border-radius:var(--st-r-xl);
+  box-shadow:var(--st-sh-card);
+}
+.authwall__head{display:flex; flex-direction:column; gap:var(--st-s-2)}
+.authwall__title{font-size:var(--st-fs-xl); font-weight:var(--st-fw-bold); line-height:var(--st-lh-tight); margin:0}
+.authwall__sub{margin:0; font-size:var(--st-fs-sm); color:var(--st-ink-muted); line-height:var(--st-lh-body)}
+.authwall__tabs{display:flex; gap:var(--st-s-1); padding:var(--st-s-1); background:var(--st-surface-2); border-radius:var(--st-r-pill)}
+.authwall__tab{
+  flex:1; border:0; background:transparent; cursor:pointer; padding:var(--st-s-2) var(--st-s-3);
+  border-radius:var(--st-r-pill); font:inherit; font-size:var(--st-fs-sm); font-weight:var(--st-fw-medium);
+  color:var(--st-ink-muted); transition:background var(--st-dur) var(--st-ease), color var(--st-dur) var(--st-ease);
+}
+.authwall__tab[aria-selected="true"]{background:var(--st-surface); color:var(--st-ink); box-shadow:var(--st-sh-pop)}
+.authwall__form{display:flex; flex-direction:column; gap:var(--st-s-4)}
+.authwall__field{display:flex; flex-direction:column; gap:var(--st-s-2)}
+.authwall__label{font-size:var(--st-fs-xs); font-weight:var(--st-fw-medium); color:var(--st-ink-soft); letter-spacing:.01em}
+.authwall__input{
+  width:100%; box-sizing:border-box; font:inherit; font-size:var(--st-fs-md);
+  padding:var(--st-s-3) var(--st-s-4); color:var(--st-ink);
+  background:var(--st-surface); border:1px solid var(--st-line); border-radius:var(--st-r-md);
+  transition:border-color var(--st-dur) var(--st-ease), box-shadow var(--st-dur) var(--st-ease);
+}
+.authwall__input:focus{outline:none; border-color:var(--st-accent); box-shadow:0 0 0 3px var(--st-accent-tint)}
+.authwall__input:disabled{background:var(--st-surface-2); color:var(--st-ink-muted)}
+.authwall__code{display:flex; gap:var(--st-s-2)}
+.authwall__code .authwall__input{flex:1; letter-spacing:.24em; font-family:var(--st-font-mono)}
+.authwall__send{white-space:nowrap; min-width:118px}
+.authwall__error{
+  margin:0; padding:var(--st-s-3) var(--st-s-4); border-radius:var(--st-r-md);
+  background:var(--st-danger-tint); color:var(--st-danger-text);
+  font-size:var(--st-fs-sm); line-height:var(--st-lh-body);
+}
+.authwall__note{
+  margin:0; padding:var(--st-s-3) var(--st-s-4); border-radius:var(--st-r-md);
+  background:var(--st-accent-tint); color:var(--st-accent-text);
+  font-size:var(--st-fs-sm); line-height:var(--st-lh-body);
+}
+.authwall__foot{
+  display:flex; align-items:center; justify-content:space-between; gap:var(--st-s-3);
+  border-top:1px solid var(--st-line-soft); padding-top:var(--st-s-4);
+  font-size:var(--st-fs-xs); color:var(--st-ink-muted);
+}
+.authwall__link{
+  border:0; background:transparent; padding:0; cursor:pointer;
+  font:inherit; font-size:var(--st-fs-xs); color:var(--st-accent-text); text-decoration:underline;
+}
+.authwall__base{font-family:var(--st-font-mono); font-size:11px; color:var(--st-ink-muted); word-break:break-all}
+.authwall__spin{
+  width:14px; height:14px; border-radius:50%; display:inline-block;
+  border:2px solid currentColor; border-right-color:transparent; animation:authwall-spin .7s linear infinite;
+}
+@keyframes authwall-spin{to{transform:rotate(360deg)}}
+@media (max-width:520px){
+  .authwall__panel{padding:var(--st-s-6) var(--st-s-5) var(--st-s-5); border-radius:var(--st-r-lg)}
+}

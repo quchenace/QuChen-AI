@@ -23,6 +23,7 @@ import { ForceUpdate } from '../components/ForceUpdate';
 import { TasksScreen } from '../screens/Tasks';
 import { SkillsScreen } from '../screens/Skills';
 import { SettingsScreen } from '../screens/Settings';
+import { AuthWall } from '../screens/Auth';
 function AppShell() {
     useStore(s => s.language);
     const location = useLocation();
@@ -211,4 +212,4 @@ class AppBoundary extends Component<{
         return <div className="app-recovery"><h1 className="h2">{tr("QuChen couldn\u2019t show this screen")}</h1><p>{tr("Your saved conversations and settings are still available.")}</p><Btn variant="primary" onClick={() => { void bootstrap().then(() => this.setState({ failed: false })); }}>{tr("Retry")}</Btn></div>;
     }
 }
-export function App() { return <AppBoundary><ForceUpdate><AppShell /></ForceUpdate></AppBoundary>; }
+export function App() { return <AppBoundary><AuthWall><ForceUpdate><AppShell /></ForceUpdate></AuthWall></AppBoundary>; }

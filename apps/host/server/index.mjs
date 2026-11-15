@@ -23,6 +23,7 @@ import { mcpSkippedNotices } from './agent/profile.mjs';
 import { createAgentTools } from './agent/tools-settings.mjs';
 import { withPlainStatus } from './agent/status.mjs';
 import { findBrowser, findPlaywrightMcp } from './agent/browser-probe.mjs';
+import { handleAuthRoute, gateState as accountGateState, ensureFresh as ensureAccountSession, apiLocked } from './auth-account.mjs';
 /**
  * QuChen engine host.
  *
@@ -981,6 +982,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
+    /* QuChen account: the desktop window signs in before it reaches any other route (server/auth-account.mjs).
+       Answered before the origin check below so the window can ask "am I signed in?" from its own origin. */
+    if (await handleAuthRoute(req, res, path, method)) return undefined;
+    /* The rest of the API is the product, so it stays shut until the account gate opens (server/auth-account.mjs). */
+    if (apiLocked(path)) return error(res, 401, 'Sign in to QuChen to use this.');
     if (path.startsWith('/api/') && req.headers.origin) {
       const origin = new URL(req.headers.origin);
       if (!['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname)) return error(res, 403, 'Open the local QuChen app to use host controls.');
@@ -2511,6 +2517,11 @@ server.listen(PORT, HOST, () => {
   }, 2500).unref?.();
   // Engines a lost owner left behind (an earlier crash, an older version): ended after a PID + start time + command-line check.
   if (control && process.env.QUCHEN_PACKAGED === '1') control.cleanup().catch(() => {});
+  // The signed-in session is refreshed in the background, so a long-running window does not fall back to the sign-in screen.
+  const accountTimer = setInterval(() => { ensureAccountSession().catch(() => {}); }, 6 * 3600 * 1000);
+  accountTimer.unref?.();
+  ensureAccountSession().catch(() => {});
+  if (!accountGateState().unlocked) console.log('[quchen] no QuChen account session: the window starts on the sign-in screen');
 });
 
 let stopping=false;

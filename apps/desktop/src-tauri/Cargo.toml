@@ -1,6 +1,6 @@
 [package]
 name = "quchen-desktop"
-version = "0.4.0"
+version = "0.4.1"
 description = "QuChen Desktop — local AI, tuned to one model."
 edition = "2021"
 rust-version = "1.77"
