@@ -33,6 +33,10 @@ jobs:
     name: Linux / runtime requirements only
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # The QuChen account gate (serve/authgate.py) is on by default in production.  This suite drives the server
+    # directly and asserts the pre-login-wall behaviour (/props, /slots, the page CSP), so the gate is off here.
+    env:
+      QUCHEN_AUTH_GATE: off
     steps:
       - uses: actions/checkout@v7
         with:
