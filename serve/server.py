@@ -4783,10 +4783,13 @@ class Service:
         self.slot_save_path = None                    # --slot-save-path: /slots/0?action=save|restore (off when None)
         self.embeddings = threading.local()           # the current request's image embeddings file (GENI)
         self.api_key = ""                              # when set, /v1/* needs it (Bearer or x-api-key)
-        # QuChen account: the login wall (serve/authgate.py).  On unless the config's "auth_gate" is false or the
-        # server runs with --no-auth-gate (a test rig, or a machine whose account service is not wanted).
-        self.gate = authgate.Gate("ai", enabled=True)
-        self.auth_gate_on = True
+        # QuChen account: the login wall (serve/authgate.py).  On unless the config's "auth_gate" is false,
+        # $QUCHEN_AUTH_GATE is off, or the server runs with --no-auth-gate (a test rig, or a machine whose account
+        # service is not wanted).  The environment is read here as well as in main(), so a suite that builds a
+        # Service directly gets the same default the command line would.
+        _gate_env = str(os.environ.get("QUCHEN_AUTH_GATE", "on")).strip().lower()
+        self.auth_gate_on = _gate_env not in ("false", "off", "0", "no", "none")
+        self.gate = authgate.Gate("ai", enabled=self.auth_gate_on)
         # #458 (opt-in, the config's "effort_position": "end"): a non-default reasoning effort goes in a short system
         # turn before the answer instead of the top of the prompt, so switching it keeps the cached conversation
         self.effort_end = False
