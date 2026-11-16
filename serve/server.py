@@ -7784,7 +7784,8 @@ def make_handler(svc: Service):
         # The page and the local control endpoints (/settings, /slots, /config, MCP) need a signed-in QuChen account.
         # /v1/* keeps its own api_key rules: a CLI or another QuChen app talking to this server is not a browser.
         PAGE_PATHS = ("", "/index.html", "/monitor.html", "/monitor", "/app")
-        OPEN_PATHS = ("/api/auth/login", "/api/auth/state", "/favicon.ico")
+        OPEN_PATHS = ("/api/auth/login", "/api/auth/state", "/favicon.ico",
+                      "/api/auth/send-code", "/api/auth/register")
 
         def _gate_open(self, path: str) -> bool:
             return path in self.OPEN_PATHS or path.startswith("/auth/") or path.startswith("/v1/") \
@@ -7856,6 +7857,40 @@ def make_handler(svc: Service):
                            {"error": {"type": "auth_failed", "code": e.code, "message": str(e)}})
                 return
             self._json(200, {"ok": True, "email": state.get("email"), "role": state.get("role")})
+
+        def _auth_send_code(self, body: dict):
+            email = (body.get("email") or "").strip()
+            purpose = (body.get("purpose") or "register").strip()
+            if not email:
+                self._json(400, {"error": {"type": "invalid_request_error", "message": "email is required"}})
+                return
+            try:
+                data = svc.gate.send_code(email, purpose)
+            except authgate.AuthError as e:
+                self._json(e.status if e.status in (400, 401, 403, 409, 429) else 503,
+                           {"error": {"type": "auth_failed", "code": e.code, "message": str(e)}})
+                return
+            out = {"ok": True, "ttl": data.get("ttl"), "resend_after": data.get("resend_after"),
+                   "message": data.get("message")}
+            if data.get("dev_code"):
+                out["dev_code"] = data.get("dev_code")
+            self._json(200, out)
+
+        def _auth_register(self, body: dict):
+            email = (body.get("email") or "").strip()
+            code = (body.get("code") or "").strip()
+            password = body.get("password") or ""
+            if not email or not code or not password:
+                self._json(400, {"error": {"type": "invalid_request_error",
+                                           "message": "email, code and password are required"}})
+                return
+            try:
+                data = svc.gate.register(email, code, password)
+            except authgate.AuthError as e:
+                self._json(e.status if e.status in (400, 401, 403, 409, 429) else 503,
+                           {"error": {"type": "auth_failed", "code": e.code, "message": str(e)}})
+                return
+            self._json(200, {"ok": True, "status": data.get("status"), "message": data.get("message")})
 
         def _auth_logout(self):
             try:
@@ -8283,6 +8318,10 @@ def make_handler(svc: Service):
                         return
                 if path == "/api/auth/login":
                     self._auth_login(body if isinstance(body, dict) else {})
+                elif path == "/api/auth/send-code":
+                    self._auth_send_code(body if isinstance(body, dict) else {})
+                elif path == "/api/auth/register":
+                    self._auth_register(body if isinstance(body, dict) else {})
                 elif path == "/api/auth/logout":
                     self._auth_logout()
                 else:
