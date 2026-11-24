@@ -94,7 +94,7 @@
 
   <div class="hint">
     账号服务：<code id="base">http://127.0.0.1:8788</code><br>
-    离线可用 30 天；超期或密码变更后需要重新联网登录。
+    离线可用 7 天（服务端可调）；超期或密码变更后需要重新联网登录。
     <div class="row"><button class="ghost" type="button" id="signout">换账号 / 退出</button></div>
   </div>
 </form>
@@ -179,6 +179,8 @@
       var e = el(id);
       if (e) e.style.display = reg ? 'none' : '';
     });
+    var lab = document.querySelectorAll('label[for="email"], label[for="password"]');
+    for (var i = 0; i < lab.length; i++) lab[i].style.display = reg ? 'none' : '';
     pane.style.display = reg ? '' : 'none';
     tabLogin.style.background = reg ? 'transparent' : 'rgba(255,255,255,.10)';
     tabLogin.style.color = reg ? '#8b93a3' : '#e8ecf2';
@@ -216,7 +218,12 @@
       too_soon: '发送太频繁，请稍后再试。',
       smtp_failed: '验证码邮件发送失败，请稍后重试。',
       unreachable: '连不上账号服务，请确认网络后重试。',
-      bad_request: '请检查填写内容。'
+      bad_request: '请检查填写内容。',
+      weak_password: '密码需 8-128 位，请重新设置。',
+      pending_approval: '账号待管理员审批，通过后即可登录。',
+      bad_credentials: '邮箱或密码不正确。',
+      locked: '密码错误次数过多，请稍后再试或重置密码。',
+      too_many_devices: '设备数已达上限，请先在账号中心移出旧设备。'
     };
     return map[e.code] || e.message || '操作失败，请重试。';
   }
