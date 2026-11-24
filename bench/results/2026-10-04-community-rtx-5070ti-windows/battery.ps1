@@ -1,4 +1,4 @@
-# bench_battery.ps1 — house-protocol battery on the live serve (stock 0.1.39)
+﻿# bench_battery.ps1 — house-protocol battery on the live serve (stock 0.1.39)
 # 4K/32K/104K/130K prompts, greedy, 256-token cap, unique nonce per run.
 $ErrorActionPreference = "Continue"
 $h = Invoke-RestMethod -Uri http://127.0.0.1:8080/health -TimeoutSec 5
