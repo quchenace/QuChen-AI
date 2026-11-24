@@ -6,8 +6,8 @@
 
 | 模块 | 新路径 | 说明 |
 | --- | --- | --- |
-| AI 模块（主项目 quchenace/QuChen-AI） | `D:\QuChenDev\QuChen-AI` | 含 `apps/desktop`(Tauri 外壳)、`apps/host`(Node 后端)、`packaging`(打包/feed)、`docs` |
-| VPN 模块（quchenace/QuChen-VPN） | `D:\QuChenDev\QuChen-VPN` | 源码仓库，构建产物由 `build.ps1` 生成，仓库内不带 exe |
+| AI 模块（主项目 quchenace/QuChen-AI） | `D:\QUCHENALL\QuChenDev\QuChen-AI` | 含 `apps/desktop`(Tauri 外壳)、`apps/host`(Node 后端)、`packaging`(打包/feed)、`docs` |
+| VPN 模块（quchenace/QuChen-VPN） | `D:\QUCHENALL\QuChenDev\QuChen-VPN` | 源码仓库，构建产物由 `build.ps1` 生成，仓库内不带 exe |
 
 原路径 `D:\聊天\QuChen-AI`、`D:\聊天\vpn-src\QuChen-VPN-main` 已不存在。历史排查报告仍留在 `D:\聊天`，不随迁移移动。
 
